@@ -8,6 +8,7 @@ import {
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
+import TaskMasterAddModal from "./TaskMasterAddModal"; // adjust path to wherever you put the file
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -57,6 +58,13 @@ interface Task {
     allotted_time: number | null;
     task_status: TaskStatus;
     assigned_date: string;
+}
+
+interface TaskMasterOption {
+    id: number;
+    task_name: string;
+    default_hours: number;
+    label: string;   // "Logo Creation - 1hr"
 }
 
 // ── Statuses shown on THIS screen — everything except Completed/Cancelled ──
@@ -157,6 +165,11 @@ export default function Active_Task_Admin() {
     const [cancelling, setCancelling] = useState(false);
     const [cancelForm] = Form.useForm();
 
+    const [createDeptId, setCreateDeptId] = useState<string | undefined>(undefined);
+    const [addTaskMasterOpen, setAddTaskMasterOpen] = useState(false);
+
+    const [taskMasterList, setTaskMasterList] = useState<TaskMasterOption[]>([]);
+
     const fetchTasks = useCallback(() => {
         setLoading(true);
         fetch(`${BASE_URL}/api/tasks/get_all_tasks/`, {
@@ -207,13 +220,35 @@ export default function Active_Task_Admin() {
                 ]);
             });
     }, []);
+    const fetchTaskMaster = useCallback(() => {
+        fetch(`${BASE_URL}/api/tasks/task_master/`, {
+            headers: { ...authHeaders() },
+        })
+            .then((r) => r.json())
+            .then((d) => setTaskMasterList(Array.isArray(d) ? d : d.results || []))
+            .catch(() => message.error("Failed to load task catalog"));
+    }, []);
 
     useEffect(() => {
         fetchTasks();
         fetchDepartments();
         fetchEmployees();
         fetchPriorities();
-    }, [fetchTasks, fetchDepartments, fetchEmployees, fetchPriorities]);
+        fetchTaskMaster();
+    }, [fetchTasks, fetchDepartments, fetchEmployees, fetchPriorities, fetchTaskMaster]);
+
+    const handleTaskMasterSelect = (templateId: number) => {
+        const template = taskMasterList.find((t) => t.id === templateId);
+        if (!template) return;
+
+        const dueDate = dayjs().add(Number(template.default_hours), "hour");
+
+        createForm.setFieldsValue({
+            task_name: template.task_name,       // stored on the Task as plain text, same as before
+            allotted_time: template.default_hours,
+            due_date: dueDate,                   // admin can still change this — DatePicker stays enabled
+        });
+    };
 
     const totalTasks = tasks.length;
     const unassignedTasks = tasks.filter((t) => !t.assigned_to).length;
@@ -238,9 +273,16 @@ export default function Active_Task_Admin() {
 
     const openCreate = () => {
         createForm.resetFields();
+        setCreateDeptId(undefined);
         setCreateOpen(true);
     };
 
+    const handleCreateDeptChange = (deptName: string) => {
+        setCreateDeptId(deptName);
+        createForm.setFieldsValue({ assigned_to: undefined });
+    };
+
+    const employeesForCreateDept = employees.filter((e) => e.department === createDeptId);
     const handleCreate = async () => {
         let values;
         try {
@@ -251,16 +293,21 @@ export default function Active_Task_Admin() {
 
         setCreating(true);
         try {
-            const res = await fetch(`${BASE_URL}/api/tasks/create_task/`, {
+            const res = await fetch(`${BASE_URL}/api/tasks/create_and_assign/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...authHeaders() },
                 body: JSON.stringify({
                     task_name: values.task_name,
                     task_details: values.task_details,
+                    assigned_to: values.assigned_to,
+                    priority: values.priority,
+                    due_date: values.due_date ? values.due_date.format("YYYY-MM-DD") : null,
+                    allotted_time: values.allotted_time,
                 }),
             });
+
             if (res.ok) {
-                message.success("Task created. Assign it whenever you're ready.");
+                message.success("Task created and assigned");
                 setCreateOpen(false);
                 fetchTasks();
             } else {
@@ -273,7 +320,6 @@ export default function Active_Task_Admin() {
             setCreating(false);
         }
     };
-
     const openAssign = (record: Task) => {
         setAssignTarget(record);
         setAssignDeptId(record.department_name ?? undefined);
@@ -394,7 +440,7 @@ export default function Active_Task_Admin() {
             key: "task_id",
             width: 100,
             render: (v: string) => (
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)",border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",}}>{v}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)", border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", }}>{v}</span>
             ),
         },
         {
@@ -475,59 +521,59 @@ export default function Active_Task_Admin() {
                 </span>
             ),
         },
-{
-    title: "Actions",
-    key: "actions",
-    width: 140,
-    fixed: "right",
-    render: (_: any, record: Task) => {
-        const items: MenuProps["items"] = [
-            {
-                key: "assign",
-                icon: <UserSwitchOutlined />,
-                label: record.assigned_to ? "Reassign" : "Assign Task",
-                onClick: () => openAssign(record),
+        {
+            title: "Actions",
+            key: "actions",
+            width: 140,
+            fixed: "right",
+            render: (_: any, record: Task) => {
+                const items: MenuProps["items"] = [
+                    {
+                        key: "assign",
+                        icon: <UserSwitchOutlined />,
+                        label: record.assigned_to ? "Reassign" : "Assign Task",
+                        onClick: () => openAssign(record),
+                    },
+                ];
+
+                if (record.task_status === "on_hold") {
+                    items.push({
+                        key: "release_hold",
+                        icon: <PlayCircleOutlined />,
+                        label: "Release Hold",
+                        onClick: () => callTaskAction(record, "release_hold", "Hold released"),
+                    });
+                } else {
+                    items.push({
+                        key: "hold",
+                        icon: <PauseCircleOutlined />,
+                        label: "Put On Hold",
+                        onClick: () => callTaskAction(record, "hold", "Task put on hold"),
+                    });
+                }
+
+                items.push({
+                    key: "cancel",
+                    icon: <StopOutlined />,
+                    label: "Cancel Task",
+                    danger: true,
+                    onClick: () => openCancel(record),
+                });
+
+                return (
+                    <Dropdown menu={{ items }} trigger={["click"]}>
+                        <Button
+                            size="small"
+                            loading={busyId === record.id}
+                            icon={<MoreOutlined />}
+                            className="db-action-btn"
+                        >
+                            Actions
+                        </Button>
+                    </Dropdown>
+                );
             },
-        ];
-
-        if (record.task_status === "on_hold") {
-            items.push({
-                key: "release_hold",
-                icon: <PlayCircleOutlined />,
-                label: "Release Hold",
-                onClick: () => callTaskAction(record, "release_hold", "Hold released"),
-            });
-        } else {
-            items.push({
-                key: "hold",
-                icon: <PauseCircleOutlined />,
-                label: "Put On Hold",
-                onClick: () => callTaskAction(record, "hold", "Task put on hold"),
-            });
-        }
-
-        items.push({
-            key: "cancel",
-            icon: <StopOutlined />,
-            label: "Cancel Task",
-            danger: true,
-            onClick: () => openCancel(record),
-        });
-
-        return (
-            <Dropdown menu={{ items }} trigger={["click"]}>
-                <Button
-                    size="small"
-                    loading={busyId === record.id}
-                    icon={<MoreOutlined />}
-                    className="db-action-btn"
-                >
-                    Actions
-                </Button>
-            </Dropdown>
-        );
-    },
-},
+        },
     ];
 
     return (
@@ -637,29 +683,94 @@ export default function Active_Task_Admin() {
                         <FileTextOutlined /> Create Task
                     </span>
                 }
-                okText="Create"
-                width={560}
+                okText="Create & Assign"
+                width={640}
                 centered
                 destroyOnClose
             >
                 <Form form={createForm} layout="vertical">
-                    <Form.Item
-                        label="Task Name"
-                        name="task_name"
-                        rules={[{ required: true, message: "Required" }]}
-                    >
-                        <Input placeholder="e.g. Update client onboarding deck" />
+                    <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
+                        <Select
+                            placeholder="Select a task from the catalog"
+                            showSearch
+                            optionFilterProp="label"
+                            options={[
+                                ...taskMasterList.map((t) => ({ value: t.task_name, label: t.label })),
+                                { value: "__ADD_NEW__", label: "＋ Add New Task" },
+                            ]}
+                            onChange={(value) => {
+                                if (value === "__ADD_NEW__") {
+                                    createForm.setFieldsValue({ task_name: undefined });
+                                    setAddTaskMasterOpen(true);
+                                    return;
+                                }
+                                const template = taskMasterList.find((t) => t.task_name === value);
+                                if (template) handleTaskMasterSelect(template.id);
+                            }}
+                        />
                     </Form.Item>
                     <Form.Item
                         label="Task Details"
                         name="task_details"
                         rules={[{ required: true, message: "Required" }]}
                     >
-                        <Input.TextArea rows={4} placeholder="Describe what needs to be done…" />
+                        <Input.TextArea rows={3} placeholder="Describe what needs to be done…" />
+                    </Form.Item>
+
+                    <div className="db-form-row">
+                        <Form.Item
+                            label="Department"
+                            name="department"
+                            rules={[{ required: true, message: "Required" }]}
+                        >
+                            <Select
+                                placeholder="Select department"
+                                onChange={handleCreateDeptChange}
+                                options={departments.map((d) => ({ value: d.id, label: d.name }))}
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            label="Assign To"
+                            name="assigned_to"
+                            rules={[{ required: true, message: "Required" }]}
+                        >
+                            <Select
+                                placeholder={createDeptId ? "Select employee" : "Select department first"}
+                                disabled={!createDeptId}
+                                options={employeesForCreateDept.map((e) => ({ value: e.id, label: e.name }))}
+                            />
+                        </Form.Item>
+                    </div>
+
+                    <div className="db-form-row">
+                        <Form.Item
+                            label="Priority"
+                            name="priority"
+                            rules={[{ required: true, message: "Required" }]}
+                        >
+                            <Select
+                                placeholder="Select priority"
+                                options={priorities.map((p) => ({ value: p.value, label: p.label }))}
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            label="Due Date"
+                            name="due_date"
+                            rules={[{ required: true, message: "Required" }]}
+                        >
+                            <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
+                        </Form.Item>
+                    </div>
+
+                    <Form.Item
+                        label="Allotted Time (hours)"
+                        name="allotted_time"
+                        rules={[{ required: true, message: "Required" }]}
+                    >
+                        <InputNumber style={{ width: "100%" }} min={0.5} step={0.5} placeholder="e.g. 8" />
                     </Form.Item>
                 </Form>
             </Modal>
-
             <Modal
                 open={assignOpen}
                 onCancel={() => setAssignOpen(false)}
@@ -783,6 +894,19 @@ export default function Active_Task_Admin() {
                     </>
                 )}
             </Modal>
+            <TaskMasterAddModal
+                open={addTaskMasterOpen}
+                onClose={() => setAddTaskMasterOpen(false)}
+                onSaved={fetchTaskMaster}
+                onCreated={(created) => {
+                    const dueDate = dayjs().add(Number(created.default_hours), "hour");
+                    createForm.setFieldsValue({
+                        task_name: created.task_name,
+                        allotted_time: created.default_hours,
+                        due_date: dueDate,
+                    });
+                }}
+            />
         </div>
     );
 }

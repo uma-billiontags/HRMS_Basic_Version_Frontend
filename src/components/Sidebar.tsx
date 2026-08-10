@@ -65,6 +65,12 @@ const ADMIN_NAV: NavGroup[] = [
     //         { label: "Rejected Requests", icon: XCircle, to: "/admin/rejected_requests" },
     //     ],
     // },
+     {
+        section: "Master Data",
+        items: [
+            { label: "Task Master", icon: LayoutDashboard, to: "/admin/task_master" },
+        ],
+    },
     {
         section: "INSIGHTS",
         items: [

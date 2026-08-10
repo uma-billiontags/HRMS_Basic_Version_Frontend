@@ -23,6 +23,7 @@ import Active_Task_Employee from "./components/employee/tasks/Active_Task_Employ
 import Admin_Dashboard from "./components/admin/Admin_Dashboard";
 import Employee_Dashboard from "./components/employee/Employee_Dashboard";
 import Active_Task_TL from "./components/employee/tasks/Active_Task_TL";
+import Task_Master_Admin from "./components/admin/tasks/Task_Master_Admin";
 
 
 // Shared shell: Sidebar on the left, page content on the right.
@@ -71,6 +72,7 @@ function App() {
               <Route path="/admin/pending_time_correction_requests" element={<Pending_Time_Correction_Request />} />
               <Route path="/admin/reports" element={<Reports_Admin />} />
               <Route path="/admin/audit_history" element={<Audit_History_Admin />} />
+              <Route path="/admin/task_master" element={<Task_Master_Admin />} />
 
             </Route>
           </Route>
