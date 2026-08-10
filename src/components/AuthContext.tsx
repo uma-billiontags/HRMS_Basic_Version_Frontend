@@ -12,6 +12,7 @@ interface AuthUser {
   name: string;
   role: UserRole;
   token: string;
+  isTL: boolean;   // NEW
 }
 
 interface AuthContextValue {
@@ -57,10 +58,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Expected response shape: { token, role, name }
       const data = await res.json();
+
+      // Fetch is_tl (and anything else /me/ knows) right after login —
+      // login_view's response doesn't include it, only me_view does.
+      const meRes = await fetch(`${BASE_URL}/api/auth/me/`, {
+        headers: { Authorization: `Token ${data.token}` },
+      });
+      const me = meRes.ok ? await meRes.json() : {};
+
       const authUser: AuthUser = {
         name: data.name,
         role: data.role,
         token: data.token,
+        isTL: me?.is_tl ?? false,
       };
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));

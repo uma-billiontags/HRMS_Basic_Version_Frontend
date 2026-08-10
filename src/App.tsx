@@ -22,15 +22,18 @@ import Cancel_Task_Admin from "./components/admin/tasks/Cancel_Task_Admin";
 import Active_Task_Employee from "./components/employee/tasks/Active_Task_Employee";
 import Admin_Dashboard from "./components/admin/Admin_Dashboard";
 import Employee_Dashboard from "./components/employee/Employee_Dashboard";
+import Active_Task_TL from "./components/employee/tasks/Active_Task_TL";
 
 
 // Shared shell: Sidebar on the left, page content on the right.
 // Every admin page and every employee page renders inside this.
 function DashboardLayout({ role }: { role: "admin" | "employee" }) {
   const { user } = useAuth();
+  if (!user) return null; // ProtectedRoute guarantees this won't render without a user, but satisfies TS
+
   return (
     <div className="db-root">
-      <Sidebar role={role} userName={user?.name ?? ""} />
+      <Sidebar role={role} userName={user.name} isTL={user.isTL} />
       <div className="db-main">
         <main className="db-content">
           <Outlet />
@@ -39,7 +42,6 @@ function DashboardLayout({ role }: { role: "admin" | "employee" }) {
     </div>
   );
 }
-
 // Decides where "/" sends someone, based on whether they're logged in and their role.
 function RootRedirect() {
   const { user } = useAuth();
@@ -63,7 +65,7 @@ function App() {
               <Route path="/admin/completed_tasks" element={<Completed_Task_Admin />} />
               <Route path="/admin/cancel_tasks" element={<Cancel_Task_Admin />} />
               <Route path="/admin/review_tasks" element={<Review_Tasks />} />
-              <Route path="/admin/archive_tasks" element={<Archive_Task_Admin/>} />
+              <Route path="/admin/archive_tasks" element={<Archive_Task_Admin />} />
               <Route path="/admin/approved_requests" element={<Approved_Request_Admin />} />
               <Route path="/admin/rejected_requests" element={<Rejected_Request_Admin />} />
               <Route path="/admin/pending_time_correction_requests" element={<Pending_Time_Correction_Request />} />
@@ -82,6 +84,7 @@ function App() {
               <Route path="/employee/rejected_requests" element={<Rejected_Request_Employee />} />
               <Route path="/employee/reports" element={<Reports_Employee />} />
               <Route path="/employee/audit_history" element={<Audit_History_Employee />} />
+              <Route path="/employee/tl_tasks" element={<Active_Task_TL />} />
 
             </Route>
           </Route>

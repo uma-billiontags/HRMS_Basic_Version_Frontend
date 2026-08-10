@@ -5,6 +5,11 @@
 // to the logged-in employee — everyone else's tasks are visible but
 // read-only. Ownership is determined by comparing task.assigned_to to the
 // employee's own id, fetched once from /api/auth/me/.
+//
+// Reused for the TL "My Task" screen via props: forceScope="mine" locks the
+// table to the logged-in user's own tasks (self-assigned, whether by an
+// Admin, a TL, or the TL themself), hideScopeToggle hides the All/Mine
+// picker since there's nothing to toggle, and pageTitle swaps the heading.
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Table, Button, Input, Modal, Form, Tooltip, Select, message, Tag } from "antd";
@@ -66,6 +71,12 @@ interface MyTask {
 //     is_rework_session: boolean;
 // }
 
+interface Active_Task_EmployeeProps {
+    forceScope?: "mine";        // "My Task" page passes this to lock the scope
+    hideScopeToggle?: boolean;  // and this, to hide the All/Mine picker
+    pageTitle?: string;         // "My Task" instead of "All Tasks"
+}
+
 const STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string }> = {
     not_started: { label: "Not Started", color: "var(--text-secondary)", bg: "var(--bg-input)" },
     in_progress: { label: "In Progress", color: "var(--blue)", bg: "var(--blue-bg)" },
@@ -124,7 +135,11 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
 // ── Which scope is the table currently showing ──────────────────────────────
 type ScopeFilter = "all" | "mine";
 
-export default function Active_Task_Employee() {
+export default function Active_Task_Employee({
+    forceScope,
+    hideScopeToggle = false,
+    pageTitle = "All Tasks",
+}: Active_Task_EmployeeProps) {
     const [tasks, setTasks] = useState<MyTask[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
@@ -135,7 +150,7 @@ export default function Active_Task_Employee() {
     const [myId, setMyId] = useState<number | null>(null);
     const [myIdLoading, setMyIdLoading] = useState(true);
 
-    const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
+    const [scopeFilter, setScopeFilter] = useState<ScopeFilter>(forceScope ?? "all");
     const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
 
     // Whether the employee has ANY active session right now (across all tasks) —
@@ -437,8 +452,8 @@ export default function Active_Task_Employee() {
             ),
         },
         {
-            // ── NEW: who this task belongs to, with a "You" tag when it's
-            // the logged-in employee's own task — this is what makes the
+            // ── who this task belongs to, with a "You" tag when it's the
+            // logged-in employee's own task — this is what makes the
             // "all tasks visible, only yours editable" rule legible at a
             // glance instead of only showing up via disabled buttons.
             title: "Assigned To", dataIndex: "assigned_to_name", key: "assigned_to_name", width: 150,
@@ -565,13 +580,15 @@ export default function Active_Task_Employee() {
             }}>
                 <div>
                     <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>
-                        All Tasks
+                        {pageTitle}
                     </h1>
                     <p style={{
                         fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
                         fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
                     }}>
-                        Everyone's work — you can only start, pause, resume, or submit your own
+                        {forceScope === "mine"
+                            ? "Tasks assigned to you — start, pause, resume, or submit"
+                            : "Everyone's work — you can only start, pause, resume, or submit your own"}
                     </p>
                 </div>
             </div>
@@ -596,16 +613,18 @@ export default function Active_Task_Employee() {
                         borderRadius: 9, fontSize: 13,
                     }}
                 />
-                <Select
-                    value={scopeFilter}
-                    onChange={setScopeFilter}
-                    style={{ width: 160 }}
-                    options={[
-                        { value: "all", label: "All Employees" },
-                        { value: "mine", label: "My Tasks Only" },
-                    ]}
-                    suffixIcon={<UserOutlined />}
-                />
+                {!hideScopeToggle && (
+                    <Select
+                        value={scopeFilter}
+                        onChange={setScopeFilter}
+                        style={{ width: 160 }}
+                        options={[
+                            { value: "all", label: "All Employees" },
+                            { value: "mine", label: "My Tasks Only" },
+                        ]}
+                        suffixIcon={<UserOutlined />}
+                    />
+                )}
                 <Select
                     placeholder="Status"
                     allowClear
