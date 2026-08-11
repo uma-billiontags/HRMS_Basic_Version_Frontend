@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Table, Button, Input, Modal, Form, InputNumber, Switch, message } from "antd";
+import { Table, Button, Input, Modal, Form, InputNumber, Switch, message, Select } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import BulkUploadTaskMasterModal from "./BulkUploadTaskMasterModal";
@@ -58,13 +58,14 @@ export default function Task_Master_Admin() {
     const openAdd = () => {
         setEditing(null);
         form.resetFields();
-        form.setFieldsValue({ is_active: true });
+        form.setFieldsValue({ is_active: true, hours: 0, minutes: 0 });
         setModalOpen(true);
     };
 
     const openEdit = (record: TaskMaster) => {
         setEditing(record);
-        form.setFieldsValue(record);
+        const { hours, minutes } = decimalToHM(record.default_hours);
+        form.setFieldsValue({ ...record, hours, minutes });
         setModalOpen(true);
     };
 
@@ -76,6 +77,14 @@ export default function Task_Master_Admin() {
             return;
         }
 
+        const hours = Number(values.hours) || 0;
+        const minutes = Number(values.minutes) || 0;
+        if (hours === 0 && minutes === 0) {
+            message.error("Enter hours, minutes, or both — duration can't be zero.");
+            return;
+        }
+        const default_hours = Math.round((hours + minutes / 60) * 100) / 100;
+
         setSaving(true);
         const isEdit = !!editing;
         const url = isEdit
@@ -86,7 +95,11 @@ export default function Task_Master_Admin() {
             const res = await fetch(url, {
                 method: isEdit ? "PATCH" : "POST",
                 headers: { "Content-Type": "application/json", ...authHeaders() },
-                body: JSON.stringify(values),
+                body: JSON.stringify({
+                    task_name: values.task_name,
+                    default_hours,
+                    is_active: values.is_active,
+                }),
             });
             if (res.ok) {
                 message.success(isEdit ? "Task updated" : "Task added to catalog");
@@ -135,6 +148,20 @@ export default function Task_Master_Admin() {
         return d.task_name.toLowerCase().includes(search.toLowerCase());
     });
 
+    function decimalToHM(dec: number) {
+        const totalMinutes = Math.round((dec || 0) * 60);
+        return { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 };
+    }
+
+    function formatHM(dec: number) {
+        const { hours, minutes } = decimalToHM(dec);
+        if (hours && minutes) return `${hours}h ${minutes}m`;
+        if (hours) return `${hours}h`;
+        return `${minutes}m`;
+    }
+
+    const MINUTE_OPTIONS = [0, 15, 30, 45].map((m) => ({ value: m, label: `${m} min` }));
+
     const columns: ColumnsType<TaskMaster> = [
         {
             title: "Task Name",
@@ -145,11 +172,11 @@ export default function Task_Master_Admin() {
             ),
         },
         {
-            title: "Default Hours",
+            title: "Duration",
             dataIndex: "default_hours",
             key: "default_hours",
             width: 140,
-            render: (v: number) => <span className="td-num" style={{ fontSize: 12 }}>{v}h</span>,
+            render: (v: number) => <span className="td-num" style={{ fontSize: 12 }}>{formatHM(v)}</span>,
         },
         {
             title: "Status",
@@ -210,8 +237,8 @@ export default function Task_Master_Admin() {
                 }}
             >
                 <div>
-                    <h1 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: "var(--text-primary)" }}>
-                        Task Catalog
+                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>
+                        Standard Tasks
                     </h1>
                     <p
                         style={{
@@ -302,20 +329,17 @@ export default function Task_Master_Admin() {
                 destroyOnClose
             >
                 <Form form={form} layout="vertical">
-                    <Form.Item
-                        label="Task Name"
-                        name="task_name"
-                        rules={[{ required: true, message: "Required" }]}
-                    >
+                    <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
                         <Input placeholder="e.g. Logo Creation" />
                     </Form.Item>
-                    <Form.Item
-                        label="Default Hours"
-                        name="default_hours"
-                        rules={[{ required: true, message: "Required" }]}
-                    >
-                        <InputNumber style={{ width: "100%" }} min={0.5} step={0.5} placeholder="e.g. 1" />
-                    </Form.Item>
+                    <div style={{ display: "flex", gap: 12 }}>
+                        <Form.Item label="Hours" name="hours" style={{ flex: 1 }}>
+                            <InputNumber style={{ width: "100%" }} min={0} step={1} placeholder="e.g. 1" />
+                        </Form.Item>
+                        <Form.Item label="Minutes" name="minutes" style={{ flex: 1 }}>
+                            <Select options={MINUTE_OPTIONS} placeholder="0 min" />
+                        </Form.Item>
+                    </div>
                     <Form.Item label="Active" name="is_active" valuePropName="checked">
                         <Switch />
                     </Form.Item>

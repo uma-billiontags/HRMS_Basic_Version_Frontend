@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Modal, Form, Input, InputNumber, message } from "antd";
+import { Modal, Form, Input, InputNumber, Select, message } from "antd";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -25,18 +25,13 @@ interface CreatedTaskMaster {
 interface Props {
     open: boolean;
     onClose: () => void;
-    /** Fires after the task is added — lets the caller (e.g. Create Task form) auto-select it. */
     onCreated?: (created: CreatedTaskMaster) => void;
-    /** Fires after a successful save so the caller can refresh its list. */
     onSaved?: () => void;
 }
 
-/**
- * Single-add-only modal for adding one entry to the Task Master catalog.
- * Used from the Create Task form's "+ Add New Task" option — intentionally
- * has NO bulk upload here. Bulk upload lives only on the Task Master Admin
- * screen via its own "Bulk Upload" button — see BulkUploadTaskMasterModal.tsx.
- */
+// 15-min increments — change to 5 if you want finer control.
+const MINUTE_OPTIONS = [0, 15, 30, 45].map((m) => ({ value: m, label: `${m} min` }));
+
 export default function TaskMasterAddModal({ open, onClose, onCreated, onSaved }: Props) {
     const [form] = Form.useForm();
     const [saving, setSaving] = useState(false);
@@ -53,6 +48,18 @@ export default function TaskMasterAddModal({ open, onClose, onCreated, onSaved }
         } catch {
             return;
         }
+
+        const hours = Number(values.hours) || 0;
+        const minutes = Number(values.minutes) || 0;
+
+        if (hours === 0 && minutes === 0) {
+            message.error("Enter hours, minutes, or both — duration can't be zero.");
+            return;
+        }
+
+        // Round to 2 decimals so it lines up exactly with the DB field's precision.
+        const default_hours = Math.round((hours + minutes / 60) * 100) / 100;
+
         setSaving(true);
         try {
             const res = await fetch(`${BASE_URL}/api/tasks/task_master/create/`, {
@@ -60,7 +67,7 @@ export default function TaskMasterAddModal({ open, onClose, onCreated, onSaved }
                 headers: { "Content-Type": "application/json", ...authHeaders() },
                 body: JSON.stringify({
                     task_name: values.task_name,
-                    default_hours: values.default_hours,
+                    default_hours,
                     is_active: true,
                 }),
             });
@@ -93,17 +100,19 @@ export default function TaskMasterAddModal({ open, onClose, onCreated, onSaved }
             centered
             destroyOnClose
         >
-            <Form form={form} layout="vertical">
+            <Form form={form} layout="vertical" initialValues={{ hours: 0, minutes: 0 }}>
                 <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
                     <Input placeholder="e.g. Logo Creation" />
                 </Form.Item>
-                <Form.Item
-                    label="Default Hours"
-                    name="default_hours"
-                    rules={[{ required: true, message: "Required" }]}
-                >
-                    <InputNumber style={{ width: "100%" }} min={0.5} step={0.5} placeholder="e.g. 1" />
-                </Form.Item>
+
+                <div style={{ display: "flex", gap: 12 }}>
+                    <Form.Item label="Hours" name="hours" style={{ flex: 1 }}>
+                        <InputNumber style={{ width: "100%" }} min={0} step={1} placeholder="e.g. 1" />
+                    </Form.Item>
+                    <Form.Item label="Minutes" name="minutes" style={{ flex: 1 }}>
+                        <Select options={MINUTE_OPTIONS} placeholder="0 min" />
+                    </Form.Item>
+                </div>
             </Form>
         </Modal>
     );

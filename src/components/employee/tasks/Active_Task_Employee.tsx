@@ -1,10 +1,8 @@
 // User_Tasks.tsx
-// Employee dashboard — shows EVERY task in the system (not just this
-// employee's own), same as the admin table. Timer controls (Start / Pause /
-// Resume / Submit) and "Request Fix" only render/enable for tasks assigned
-// to the logged-in employee — everyone else's tasks are visible but
-// read-only. Ownership is determined by comparing task.assigned_to to the
-// employee's own id, fetched once from /api/auth/me/.
+// Employee dashboard — by default shows only the logged-in employee's OWN
+// tasks (via /api/tasks/my_tasks/). The "All Employees" scope still exists
+// in the component for reuse elsewhere, but the plain employee route hides
+// it and defaults to "mine" so employees never see other people's tasks.
 //
 // Reused for the TL "My Task" screen via props: forceScope="mine" locks the
 // table to the logged-in user's own tasks (self-assigned, whether by an
@@ -15,7 +13,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Table, Button, Input, Modal, Form, Tooltip, Select, message, Tag } from "antd";
 import {
     SearchOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined,
-    CheckCircleOutlined, LinkOutlined, UserOutlined,
+    CheckCircleOutlined, LinkOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -63,18 +61,10 @@ interface MyTask {
     has_active_session: boolean;
 }
 
-// interface SessionRow {
-//     id: number;
-//     start_time: string;
-//     end_time: string | null;
-//     duration_seconds: number | null;
-//     is_rework_session: boolean;
-// }
-
 interface Active_Task_EmployeeProps {
-    forceScope?: "mine";        // "My Task" page passes this to lock the scope
+    forceScope?: "mine";        // "My Task" page (TL) passes this to lock the scope
     hideScopeToggle?: boolean;  // and this, to hide the All/Mine picker
-    pageTitle?: string;         // "My Task" instead of "All Tasks"
+    pageTitle?: string;         // heading override
 }
 
 const STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string }> = {
@@ -137,26 +127,27 @@ type ScopeFilter = "all" | "mine";
 
 export default function Active_Task_Employee({
     forceScope,
-    hideScopeToggle = false,
-    pageTitle = "All Tasks",
+    pageTitle = "My Tasks",
 }: Active_Task_EmployeeProps) {
     const [tasks, setTasks] = useState<MyTask[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [busyTaskId, setBusyTaskId] = useState<number | null>(null);
 
-    // ── The logged-in employee's own id — everything else compares against
-    // this to decide "can I edit this row". Fetched once from /api/auth/me/.
+    // ── The logged-in employee's own id — still used for thea "You" tag and
+    // any leftover ownership checks. Fetched once from /api/auth/me/.
     const [myId, setMyId] = useState<number | null>(null);
     const [myIdLoading, setMyIdLoading] = useState(true);
 
-    const [scopeFilter, setScopeFilter] = useState<ScopeFilter>(forceScope ?? "all");
+    // ── Defaults to "mine" now — this page only ever shows the employee's
+    // own tasks unless a caller explicitly opts into "all" (there's
+    // currently no route that does, but the option stays available).
+    const [scopeFilter, _setScopeFilter] = useState<ScopeFilter>(forceScope ?? "mine");
     const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
 
     // Whether the employee has ANY active session right now (across all tasks) —
     // used to disable "Start" on every other task of THEIRS, per the
-    // flowchart's "Is another task timer active?" guard. Irrelevant for
-    // tasks that aren't theirs, since those are never actionable anyway.
+    // flowchart's "Is another task timer active?" guard.
     const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
 
     // Submit modal
@@ -164,13 +155,6 @@ export default function Active_Task_Employee({
     const [submitTarget, setSubmitTarget] = useState<MyTask | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [submitForm] = Form.useForm();
-
-    // const [correctionOpen, setCorrectionOpen] = useState(false);
-    // // const [correctionTarget, setCorrectionTarget] = useState<MyTask | null>(null);
-    // // const [correctionSessions, setCorrectionSessions] = useState<SessionRow[]>([]);
-    // // const [loadingSessions, setLoadingSessions] = useState(false);
-    // const [submittingCorrection, setSubmittingCorrection] = useState(false);
-    // const [correctionForm] = Form.useForm();
 
     const fetchMe = useCallback(() => {
         setMyIdLoading(true);
@@ -183,14 +167,19 @@ export default function Active_Task_Employee({
 
     const fetchTasks = useCallback(() => {
         setLoading(true);
-        // Now returns EVERY task in the system, not just this employee's own —
-        // see the get_all_tasks change in tasks/views.py.
-        fetch(`${BASE_URL}/api/tasks/get_all_tasks/`, { headers: { ...authHeaders() } })
+        // "mine" -> server-scoped endpoint, so employees never even receive
+        // other people's task data over the wire. "all" -> full list (only
+        // reachable if a future caller explicitly sets scope to "all").
+        const endpoint = scopeFilter === "mine"
+            ? `${BASE_URL}/api/tasks/my_tasks/`
+            : `${BASE_URL}/api/tasks/get_all_tasks/`;
+
+        fetch(endpoint, { headers: { ...authHeaders() } })
             .then((r) => r.json())
             .then((d) => setTasks(Array.isArray(d) ? d : d.results || []))
             .catch(() => message.error("Failed to load tasks"))
             .finally(() => setLoading(false));
-    }, []);
+    }, [scopeFilter]);
 
     const fetchActiveSession = useCallback(() => {
         fetch(`${BASE_URL}/api/tasks/my_active_session/`, { headers: { ...authHeaders() } })
@@ -205,7 +194,9 @@ export default function Active_Task_Employee({
         fetchActiveSession();
     }, [fetchMe, fetchTasks, fetchActiveSession]);
 
-    // ── Ownership check used everywhere actions are gated ──────────────────
+    // ── Ownership check — still correct even now that the table is
+    // server-scoped to "mine": every row IS the employee's own task in
+    // that mode, so this just naturally evaluates true for all of them.
     const isMine = useCallback(
         (task: MyTask) => myId !== null && task.assigned_to === myId,
         [myId]
@@ -213,7 +204,6 @@ export default function Active_Task_Employee({
 
     const filtered = useMemo(() => {
         return tasks.filter((t) => {
-            if (scopeFilter === "mine" && !isMine(t)) return false;
             if (statusFilter && t.task_status !== statusFilter) return false;
             if (search.trim()) {
                 const q = search.toLowerCase();
@@ -222,11 +212,11 @@ export default function Active_Task_Employee({
             }
             return true;
         });
-    }, [tasks, search, scopeFilter, statusFilter, isMine]);
+    }, [tasks, search, statusFilter]);
 
-    // ── Stats always reflect the employee's OWN tasks, regardless of the
-    // table's current scope filter — these are meant to answer "how am I
-    // doing", not "how is everyone doing".
+    // ── Stats always reflect the employee's OWN tasks. When scope is
+    // "mine" this is just `tasks` itself; kept as a derived filter so it
+    // stays correct even if scope is ever switched to "all".
     const myTasks = useMemo(() => tasks.filter(isMine), [tasks, isMine]);
     const totalTasks = myTasks.length;
     const inProgress = myTasks.filter((t) => t.task_status === "in_progress").length;
@@ -248,9 +238,6 @@ export default function Active_Task_Employee({
         } catch {
             message.error("Network error");
         } finally {
-            // Always refetch, success or failure — the backend can partially
-            // apply a change (e.g. status updated) even when it returns an error,
-            // so trusting only the "success" branch leaves the UI stale.
             fetchTasks();
             fetchActiveSession();
             setBusyTaskId(null);
@@ -303,8 +290,9 @@ export default function Active_Task_Employee({
     };
 
     // ── Timer action buttons for a row — only rendered with real controls
-    // when the task belongs to the logged-in employee. Everyone else's
-    // tasks show a muted "View only" tag instead, no matter the status.
+    // when the task belongs to the logged-in employee. In "mine" scope
+    // (the default here) this is always true; kept as a guard in case the
+    // component is ever reused in "all" scope elsewhere.
     function TimerActions({ task }: { task: MyTask }) {
         if (!isMine(task)) {
             return <span style={{ fontSize: 11, color: "var(--text-muted)" }}>View only</span>;
@@ -377,59 +365,6 @@ export default function Active_Task_Employee({
         return <span style={{ fontSize: 11, color: "var(--text-muted)" }}>No action</span>;
     }
 
-    // const openCorrection = async (task: MyTask) => {
-    //     if (!isMine(task)) return; // guard — button is disabled for others anyway
-    //     setCorrectionTarget(task);
-    //     setCorrectionOpen(true);
-    //     setLoadingSessions(true);
-    //     correctionForm.resetFields();
-    //     try {
-    //         const res = await fetch(`${BASE_URL}/api/tasks/${task.id}/sessions/`, {
-    //             headers: { ...authHeaders() },
-    //         });
-    //         const data = await res.json();
-    //         // Only closed sessions can be corrected — an open one isn't "wrong" yet.
-    //         setCorrectionSessions((Array.isArray(data) ? data : []).filter((s: SessionRow) => s.end_time));
-    //     } catch {
-    //         message.error("Failed to load session history");
-    //         setCorrectionSessions([]);
-    //     } finally {
-    //         setLoadingSessions(false);
-    //     }
-    // };
-
-    // const handleCorrectionSubmit = async () => {
-    //     let values;
-    //     try {
-    //         values = await correctionForm.validateFields();
-    //     } catch {
-    //         return;
-    //     }
-
-    //     setSubmittingCorrection(true);
-    //     try {
-    //         const res = await fetch(`${BASE_URL}/api/tasks/sessions/${values.session_id}/correction-request/`, {
-    //             method: "POST",
-    //             headers: { "Content-Type": "application/json", ...authHeaders() },
-    //             body: JSON.stringify({
-    //                 reason: values.reason,
-    //                 requested_end_time: values.requested_end_time.toISOString(),
-    //             }),
-    //         });
-    //         if (res.ok) {
-    //             message.success("Correction request sent for admin review");
-    //             setCorrectionOpen(false);
-    //         } else {
-    //             const err = await res.json().catch(() => ({}));
-    //             message.error(err.detail || "Failed to submit correction request");
-    //         }
-    //     } catch {
-    //         message.error("Network error");
-    //     } finally {
-    //         setSubmittingCorrection(false);
-    //     }
-    // };
-
     // ── Full Excel-style column set ──────────────────────────────────────────
     const columns: ColumnsType<MyTask> = [
         {
@@ -452,10 +387,8 @@ export default function Active_Task_Employee({
             ),
         },
         {
-            // ── who this task belongs to, with a "You" tag when it's the
-            // logged-in employee's own task — this is what makes the
-            // "all tasks visible, only yours editable" rule legible at a
-            // glance instead of only showing up via disabled buttons.
+            // "You" tag stays for clarity, and is also correct if this
+            // component is ever rendered in "all" scope elsewhere.
             title: "Assigned To", dataIndex: "assigned_to_name", key: "assigned_to_name", width: 150,
             render: (v: string | null, record: MyTask) => (
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -552,24 +485,10 @@ export default function Active_Task_Employee({
             title: "Rework Count", dataIndex: "rework_count", key: "rework_count", width: 95,
             render: (v: number) => <span className="td-num" style={{ fontSize: 12 }}>{v}</span>,
         },
-        // {
-        //     title: "Time Correction", key: "correction", width: 130,
-        //     render: (_: any, record: MyTask) => (
-        //         <Button
-        //             size="small"
-        //             onClick={() => openCorrection(record)}
-        //             disabled={!isMine(record) || record.total_time_taken === 0}
-        //             style={{ fontSize: 11, fontWeight: 600, borderRadius: 6 }}
-        //         >
-        //             Request Fix
-        //         </Button>
-        //     ),
-        // },
         {
             title: "Actions", key: "actions", width: 190, fixed: "right",
             render: (_: any, record: MyTask) => <TimerActions task={record} />,
         },
-
     ];
 
     return (
@@ -586,7 +505,7 @@ export default function Active_Task_Employee({
                         fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
                         fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
                     }}>
-                        {forceScope === "mine"
+                        {scopeFilter === "mine"
                             ? "Tasks assigned to you — start, pause, resume, or submit"
                             : "Everyone's work — you can only start, pause, resume, or submit your own"}
                     </p>
@@ -602,7 +521,7 @@ export default function Active_Task_Employee({
 
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
                 <Input
-                    placeholder="Search all tasks…"
+                    placeholder="Search your tasks…"
                     prefix={<SearchOutlined style={{ color: "var(--text-muted)" }} />}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -613,18 +532,7 @@ export default function Active_Task_Employee({
                         borderRadius: 9, fontSize: 13,
                     }}
                 />
-                {!hideScopeToggle && (
-                    <Select
-                        value={scopeFilter}
-                        onChange={setScopeFilter}
-                        style={{ width: 160 }}
-                        options={[
-                            { value: "all", label: "All Employees" },
-                            { value: "mine", label: "My Tasks Only" },
-                        ]}
-                        suffixIcon={<UserOutlined />}
-                    />
-                )}
+
                 <Select
                     placeholder="Status"
                     allowClear
@@ -661,8 +569,6 @@ export default function Active_Task_Employee({
                         showTotal: (total, range) => `${range[0]}–${range[1]} of ${total} tasks`,
                         style: { padding: "12px 16px" },
                     }}
-                    // Subtly highlight the employee's own rows so "all tasks,
-                    // yours are editable" reads visually, not just via the tag.
                     rowClassName={(record) => `client-table-row${isMine(record) ? " own-task-row" : ""}`}
                     style={{ fontSize: 13 }}
                 />
@@ -694,51 +600,6 @@ export default function Active_Task_Employee({
                     </Form>
                 )}
             </Modal>
-
-            {/* <Modal
-                open={correctionOpen}
-                onCancel={() => setCorrectionOpen(false)}
-                onOk={handleCorrectionSubmit}
-                confirmLoading={submittingCorrection}
-                title="Request Time Correction"
-                okText="Submit Request"
-                width={520}
-                centered
-                destroyOnClose
-            >
-                {correctionTarget && (
-                    <Form form={correctionForm} layout="vertical">
-                        <Form.Item
-                            label="Which session was incorrect?"
-                            name="session_id"
-                            rules={[{ required: true, message: "Required" }]}
-                        >
-                            <Select
-                                placeholder={loadingSessions ? "Loading sessions…" : "Select a session"}
-                                loading={loadingSessions}
-                                options={correctionSessions.map((s) => ({
-                                    value: s.id,
-                                    label: `${dayjs(s.start_time).format("DD MMM, HH:mm")} → ${dayjs(s.end_time).format("HH:mm")} (${Math.round((s.duration_seconds ?? 0) / 60)} min)${s.is_rework_session ? " · rework" : ""}`,
-                                }))}
-                            />
-                        </Form.Item>
-                        <Form.Item
-                            label="Corrected End Time"
-                            name="requested_end_time"
-                            rules={[{ required: true, message: "Required" }]}
-                        >
-                            <DatePicker showTime format="DD MMM YYYY, HH:mm" style={{ width: "100%" }} />
-                        </Form.Item>
-                        <Form.Item
-                            label="Reason"
-                            name="reason"
-                            rules={[{ required: true, message: "Please explain what went wrong" }]}
-                        >
-                            <Input.TextArea rows={3} placeholder="e.g. Forgot to pause before lunch" />
-                        </Form.Item>
-                    </Form>
-                )}
-            </Modal> */}
         </div>
     );
 }

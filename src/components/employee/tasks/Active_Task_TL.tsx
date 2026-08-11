@@ -1,15 +1,19 @@
 // Active_Task_TL.tsx
-// TL dashboard — mirrors Active_Task_Admin.tsx, but scoped: a TL only sees
-// and manages tasks THEY personally created (via /api/tasks/tl_tasks/, not
-// get_all_tasks/). A TL can create a task, assign it to anyone in the
-// employee list, or self-assign it to themselves — the "Self Assign" entry
-// in the Actions dropdown presets the Assign modal with the TL's own
-// department + id instead of making them pick from the list.
+// TL dashboard — mirrors Active_Task_Admin.tsx, including the Create Task
+// flow (TaskMaster catalog dropdown + create-and-assign in one step). Only
+// scoping differs: a TL only sees/manages tasks THEY personally created
+// (via /api/tasks/tl_tasks/, not get_all_tasks/), and create_and_assign/
+// attributes new tasks to assigned_by_employee instead of assigned_by_admin
+// automatically based on who's logged in.
 //
 // Ownership enforcement (only manage tasks you created) is done server-side
 // in assign_task/hold_task/cancel_task/etc via _owns_task_for_management —
 // this screen never shows tasks created by Admin or another TL in the first
 // place, since tl_tasks/ is already scoped, so there's nothing to hide here.
+//
+// "Self Assign" remains in the Actions dropdown for reassigning an existing
+// task to yourself after the fact — the Create modal itself also lets a TL
+// pick themselves directly from the Assign To list, same as Admin's flow.
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Table, Button, Input, Modal, Select, Form, message, DatePicker, InputNumber, Tag, Dropdown } from "antd";
@@ -21,6 +25,7 @@ import {
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
+import TaskMasterAddModal from "../../admin/tasks/TaskMasterAddModal"; // adjust path to wherever you put the file
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -70,6 +75,13 @@ interface Task {
     allotted_time: number | null;
     task_status: TaskStatus;
     assigned_date: string;
+}
+
+interface TaskMasterOption {
+    id: number;
+    task_name: string;
+    default_hours: number;
+    label: string;   // "Logo Creation - 1hr"
 }
 
 // ── Statuses shown on THIS screen — everything except Completed/Cancelled.
@@ -162,6 +174,9 @@ export default function Active_Task_TL() {
     const [createOpen, setCreateOpen] = useState(false);
     const [creating, setCreating] = useState(false);
     const [createForm] = Form.useForm();
+    const [createDeptId, setCreateDeptId] = useState<string | undefined>(undefined);
+    const [addTaskMasterOpen, setAddTaskMasterOpen] = useState(false);
+    const [taskMasterList, setTaskMasterList] = useState<TaskMasterOption[]>([]);
 
     const [assignOpen, setAssignOpen] = useState(false);
     const [assigning, setAssigning] = useState(false);
@@ -237,13 +252,36 @@ export default function Active_Task_TL() {
             });
     }, []);
 
+    const fetchTaskMaster = useCallback(() => {
+        fetch(`${BASE_URL}/api/tasks/task_master/`, {
+            headers: { ...authHeaders() },
+        })
+            .then((r) => r.json())
+            .then((d) => setTaskMasterList(Array.isArray(d) ? d : d.results || []))
+            .catch(() => message.error("Failed to load task catalog"));
+    }, []);
+
     useEffect(() => {
         fetchMe();
         fetchTasks();
         fetchDepartments();
         fetchEmployees();
         fetchPriorities();
-    }, [fetchMe, fetchTasks, fetchDepartments, fetchEmployees, fetchPriorities]);
+        fetchTaskMaster();
+    }, [fetchMe, fetchTasks, fetchDepartments, fetchEmployees, fetchPriorities, fetchTaskMaster]);
+
+    const handleTaskMasterSelect = (templateId: number) => {
+        const template = taskMasterList.find((t) => t.id === templateId);
+        if (!template) return;
+
+        const dueDate = dayjs().add(Number(template.default_hours), "hour");
+
+        createForm.setFieldsValue({
+            task_name: template.task_name,       // stored on the Task as plain text, same as before
+            allotted_time: template.default_hours,
+            due_date: dueDate,                   // TL can still change this — DatePicker stays enabled
+        });
+    };
 
     const isSelfAssigned = useCallback(
         (task: Task) => myId !== null && task.assigned_to === myId,
@@ -273,9 +311,19 @@ export default function Active_Task_TL() {
 
     const openCreate = () => {
         createForm.resetFields();
+        setCreateDeptId(undefined);
         setCreateOpen(true);
     };
 
+    const handleCreateDeptChange = (deptName: string) => {
+        setCreateDeptId(deptName);
+        createForm.setFieldsValue({ assigned_to: undefined });
+    };
+
+    const employeesForCreateDept = employees.filter((e) => e.department === createDeptId);
+
+    // ── Create + assign in one shot, same as Admin — backend attributes it
+    // to assigned_by_employee automatically since the caller is a TL.
     const handleCreate = async () => {
         let values;
         try {
@@ -286,16 +334,25 @@ export default function Active_Task_TL() {
 
         setCreating(true);
         try {
-            const res = await fetch(`${BASE_URL}/api/tasks/create_task/`, {
+            const res = await fetch(`${BASE_URL}/api/tasks/create_and_assign/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...authHeaders() },
                 body: JSON.stringify({
                     task_name: values.task_name,
                     task_details: values.task_details,
+                    assigned_to: values.assigned_to,
+                    priority: values.priority,
+                    due_date: values.due_date ? values.due_date.format("YYYY-MM-DD") : null,
+                    allotted_time: values.allotted_time,
                 }),
             });
+
             if (res.ok) {
-                message.success("Task created. Assign it — to your team or yourself — whenever you're ready.");
+                message.success(
+                    values.assigned_to === myId
+                        ? "Task created and self-assigned"
+                        : "Task created and assigned"
+                );
                 setCreateOpen(false);
                 fetchTasks();
             } else {
@@ -689,6 +746,9 @@ export default function Active_Task_TL() {
                 />
             </div>
 
+            {/* ── Create Task modal — now matches Admin's: TaskMaster catalog
+                dropdown (with inline "Add New Task"), Department, Assign To,
+                Priority, Due Date, Allotted Time, all in one create+assign step. ── */}
             <Modal
                 open={createOpen}
                 onCancel={() => setCreateOpen(false)}
@@ -699,25 +759,138 @@ export default function Active_Task_TL() {
                         <FileTextOutlined /> Create Task
                     </span>
                 }
-                okText="Create"
-                width={560}
+                okText="Create & Assign"
+                width={640}
                 centered
                 destroyOnClose
             >
                 <Form form={createForm} layout="vertical">
-                    <Form.Item
-                        label="Task Name"
-                        name="task_name"
-                        rules={[{ required: true, message: "Required" }]}
-                    >
-                        <Input placeholder="e.g. Update client onboarding deck" />
+                    <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
+                        <Select
+                            placeholder="Select a task from the catalog"
+                            showSearch
+                            optionFilterProp="label"
+                            options={[
+                                ...taskMasterList.map((t) => ({
+                                    value: t.task_name,
+                                    label: t.label,
+                                })),
+                                {
+                                    value: "__ADD_NEW__",
+                                    label: "Add New Task",
+                                },
+                            ]}
+                            optionRender={(option) => {
+                                const isAddNew = option.value === "__ADD_NEW__";
+
+                                if (isAddNew) {
+                                    return (
+                                        <div
+                                            style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 8,
+                                                color: "#1677ff",
+                                                fontWeight: 600,
+                                                padding: "4px 0",
+                                            }}
+                                        >
+                                            <PlusOutlined
+                                                style={{
+                                                    fontSize: 13,
+                                                    color: "#1677ff",
+                                                }}
+                                            />
+                                            <span>Add New Task</span>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div>
+                                        {option.label}
+                                    </div>
+                                );
+                            }}
+                            onChange={(value) => {
+                                if (value === "__ADD_NEW__") {
+                                    createForm.setFieldsValue({ task_name: undefined });
+                                    setAddTaskMasterOpen(true);
+                                    return;
+                                }
+
+                                const template = taskMasterList.find(
+                                    (t) => t.task_name === value
+                                );
+
+                                if (template) {
+                                    handleTaskMasterSelect(template.id);
+                                }
+                            }}
+                        />
                     </Form.Item>
                     <Form.Item
                         label="Task Details"
                         name="task_details"
                         rules={[{ required: true, message: "Required" }]}
                     >
-                        <Input.TextArea rows={4} placeholder="Describe what needs to be done…" />
+                        <Input.TextArea rows={3} placeholder="Describe what needs to be done…" />
+                    </Form.Item>
+
+                    <div className="db-form-row">
+                        <Form.Item
+                            label="Department"
+                            name="department"
+                            rules={[{ required: true, message: "Required" }]}
+                        >
+                            <Select
+                                placeholder="Select department"
+                                onChange={handleCreateDeptChange}
+                                options={departments.map((d) => ({ value: d.id, label: d.name }))}
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            label="Assign To"
+                            name="assigned_to"
+                            rules={[{ required: true, message: "Required" }]}
+                        >
+                            <Select
+                                placeholder={createDeptId ? "Select employee" : "Select department first"}
+                                disabled={!createDeptId}
+                                options={employeesForCreateDept.map((e) => ({
+                                    value: e.id,
+                                    label: e.id === myId ? `${e.name} (You)` : e.name,
+                                }))}
+                            />
+                        </Form.Item>
+                    </div>
+
+                    <div className="db-form-row">
+                        <Form.Item
+                            label="Priority"
+                            name="priority"
+                            rules={[{ required: true, message: "Required" }]}
+                        >
+                            <Select
+                                placeholder="Select priority"
+                                options={priorities.map((p) => ({ value: p.value, label: p.label }))}
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            label="Due Date"
+                            name="due_date"
+                            rules={[{ required: true, message: "Required" }]}
+                        >
+                            <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
+                        </Form.Item>
+                    </div>
+
+                    <Form.Item
+                        label="Allotted Time (hours)"
+                        name="allotted_time"
+                        rules={[{ required: true, message: "Required" }]}
+                    >
+                        <InputNumber style={{ width: "100%" }} min={0.5} step={0.5} placeholder="e.g. 8" />
                     </Form.Item>
                 </Form>
             </Modal>
@@ -846,6 +1019,20 @@ export default function Active_Task_TL() {
                     </>
                 )}
             </Modal>
+
+            <TaskMasterAddModal
+                open={addTaskMasterOpen}
+                onClose={() => setAddTaskMasterOpen(false)}
+                onSaved={fetchTaskMaster}
+                onCreated={(created) => {
+                    const dueDate = dayjs().add(Number(created.default_hours), "hour");
+                    createForm.setFieldsValue({
+                        task_name: created.task_name,
+                        allotted_time: created.default_hours,
+                        due_date: dueDate,
+                    });
+                }}
+            />
         </div>
     );
 }

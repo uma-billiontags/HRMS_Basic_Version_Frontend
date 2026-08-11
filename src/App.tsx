@@ -24,6 +24,8 @@ import Admin_Dashboard from "./components/admin/Admin_Dashboard";
 import Employee_Dashboard from "./components/employee/Employee_Dashboard";
 import Active_Task_TL from "./components/employee/tasks/Active_Task_TL";
 import Task_Master_Admin from "./components/admin/tasks/Task_Master_Admin";
+import Review_Tasks_By_TL from "./components/employee/tasks/Review_Tasks_By_TL";
+import Team_Access from "./components/admin/Team_Access";
 
 
 // Shared shell: Sidebar on the left, page content on the right.
@@ -73,6 +75,7 @@ function App() {
               <Route path="/admin/reports" element={<Reports_Admin />} />
               <Route path="/admin/audit_history" element={<Audit_History_Admin />} />
               <Route path="/admin/task_master" element={<Task_Master_Admin />} />
+              <Route path="/admin/team_access" element={<Team_Access />} />
 
             </Route>
           </Route>
@@ -87,6 +90,7 @@ function App() {
               <Route path="/employee/reports" element={<Reports_Employee />} />
               <Route path="/employee/audit_history" element={<Audit_History_Employee />} />
               <Route path="/employee/tl_tasks" element={<Active_Task_TL />} />
+              <Route path="/employee/tl_review_tasks" element={<Review_Tasks_By_TL />} />
 
             </Route>
           </Route>

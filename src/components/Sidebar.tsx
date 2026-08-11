@@ -23,8 +23,9 @@ import {
     // Clock,
     History,
     BarChart3,
-    Settings,
     LogOut,
+     ListChecks,
+    UsersRound,
     type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "./AuthContext";
@@ -68,7 +69,13 @@ const ADMIN_NAV: NavGroup[] = [
      {
         section: "Master Data",
         items: [
-            { label: "Task Master", icon: LayoutDashboard, to: "/admin/task_master" },
+            { label: "Task Master", icon: ListChecks, to: "/admin/task_master" },
+        ],
+    },
+      {
+        section: "TEAM ACCESS",
+        items: [
+            { label: "Team Access", icon: UsersRound, to: "/admin/team_access" },
         ],
     },
     {
@@ -78,6 +85,7 @@ const ADMIN_NAV: NavGroup[] = [
             { label: "Audit History", icon: History, to: "/admin/audit_history" },
         ],
     },
+   
 ];
 
 const EMPLOYEE_NAV: NavGroup[] = [
@@ -87,7 +95,7 @@ const EMPLOYEE_NAV: NavGroup[] = [
     },
     {
         section: "TASKS",
-        items: [{ label: "All Tasks", icon: ClipboardList, to: "/employee/active_tasks" }],
+        items: [{ label: "My Tasks", icon: ClipboardList, to: "/employee/active_tasks" }],
     },
     // {
     //     section: "REQUESTS",
@@ -111,27 +119,20 @@ const EMPLOYEE_NAV: NavGroup[] = [
 // handed to someone else or self-assigned (Active_Task_TL.tsx); "All Tasks"
 // keeps the full system-wide read-only view every employee already has.
 const TL_NAV: NavGroup[] = [
-    {
-        section: "OVERVIEW",
-        items: [{ label: "Dashboard", icon: LayoutDashboard, to: "/employee/dashboard" }],
-    },
+    { section: "OVERVIEW", items: [{ label: "Dashboard", icon: LayoutDashboard, to: "/employee/dashboard" }] },
     {
         section: "TASKS",
         items: [
-            { label: "My Task", icon: ClipboardList, to: "/employee/my_tasks" },
-            { label: "Team Tasks", icon: ClipboardCheck, to: "/employee/tl_tasks" },
-            { label: "All Tasks", icon: ClipboardList, to: "/employee/active_tasks" },
+            { label: "My Task", icon: ClipboardList, to: "/employee/active_tasks" },
+            { label: "Team Tasks", icon: UsersRound, to: "/employee/tl_tasks" },
+            { label: "Review Tasks", icon: CheckCircle2, to: "/employee/tl_review_tasks" },
         ],
     },
-    {
-        section: "INSIGHTS",
-        items: [
-            { label: "Reports", icon: BarChart3, to: "/employee/reports" },
-            { label: "Audit History", icon: History, to: "/employee/audit_history" },
-        ],
-    },
+    { section: "INSIGHTS", items: [
+        { label: "Reports", icon: BarChart3, to: "/employee/reports" },
+        { label: "Audit History", icon: History, to: "/employee/audit_history" },
+    ] },
 ];
-
 // ── Props ───────────────────────────────────────────────────────────────────
 
 interface SidebarProps {
@@ -207,25 +208,7 @@ export default function Sidebar({ role, userName, isTL = false }: SidebarProps) 
                     </div>
                 </div>
 
-                <Link to="/settings" style={{ textDecoration: "none" }}>
-                    <div
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "7px 10px",
-                            borderRadius: 8,
-                            color: "var(--text-muted)",
-                            fontSize: 12,
-                            fontWeight: 500,
-                            cursor: "pointer",
-                            marginBottom: 3,
-                        }}
-                    >
-                        <Settings size={14} /> Settings
-                    </div>
-                </Link>
-
+             
                 <div
                     onClick={handleLogout}
                     style={{

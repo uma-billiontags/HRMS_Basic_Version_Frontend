@@ -1,0 +1,629 @@
+// Review_Tasks.tsx
+// Admin-only screen listing every task waiting on a decision: Submitted,
+// Resubmitted, or already Under Review. Approve requires quality + 1-5 rating;
+// Request Rework requires a reason. Styled to match Task_Display.tsx/User_Tasks.tsx.
+
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { Table, Button, Input, Modal, Select, Form, message } from "antd";
+import {
+    SearchOutlined, ReloadOutlined, CheckCircleOutlined, RollbackOutlined, LinkOutlined,
+} from "@ant-design/icons";
+import type { ColumnsType } from "antd/es/table";
+import dayjs from "dayjs";
+
+const BASE_URL = import.meta.env.VITE_BASE_URL;
+
+function authHeaders(): HeadersInit {
+    try {
+        const raw = localStorage.getItem("task_tracker_auth");
+        if (!raw) return {};
+        const { token } = JSON.parse(raw);
+        return token ? { Authorization: `Token ${token}` } : {};
+    } catch {
+        return {};
+    }
+}
+
+type ReviewStatus = "submitted" | "resubmitted" | "under_review";
+
+interface ReviewTask {
+    id: number;
+    task_id: string;
+    task_name: string;
+    task_details: string;
+    assigned_to_name: string | null;
+    department_name: string | null;
+    priority: string | null;
+    task_status: ReviewStatus;
+    total_time_taken: number;
+    allotted_time: number | null;
+    task_sheet_link: string;
+    employee_remarks: string;
+    submitted_date: string | null;
+    rework_count: number;
+}
+
+const QUALITY_OPTIONS = [
+    { value: "excellent", label: "Excellent", rating: 5 },
+    { value: "good", label: "Good", rating: 4 },
+    { value: "needs_improvement", label: "Needs Improvement", rating: 3 },
+    { value: "rework_needed", label: "Rework Needed", rating: 2 },
+    { value: "rejected", label: "Rejected", rating: 1 },
+];
+
+const STATUS_META: Record<ReviewStatus, { label: string; color: string; bg: string }> = {
+    submitted: { label: "Submitted", color: "var(--purple)", bg: "var(--purple-bg)" },
+    resubmitted: { label: "Resubmitted", color: "var(--amber)", bg: "var(--amber-bg)" },
+    under_review: { label: "Under Review", color: "var(--blue)", bg: "var(--blue-bg)" },
+};
+
+function StatusTag({ status }: { status: ReviewStatus }) {
+    const meta = STATUS_META[status];
+    return (
+        <span style={{
+            fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 10,
+            color: meta.color, background: meta.bg, whiteSpace: "nowrap",
+        }}>
+            {meta.label}
+        </span>
+    );
+}
+
+function StatCard({ label, value, changeLabel, changeType }: {
+    label: string; value: number; changeLabel: string; changeType: "up" | "down" | "neutral";
+}) {
+    return (
+        <div className="db-stat-card">
+            <div className="db-stat-label">{label}</div>
+            <div className="db-stat-value">{value}</div>
+            <div
+                className={`db-stat-change ${changeType === "neutral" ? "" : changeType}`}
+                style={changeType === "neutral" ? { color: "var(--text-secondary)" } : undefined}
+            >
+                {changeLabel}
+            </div>
+        </div>
+    );
+}
+
+export default function Review_Tasks_By_TL() {
+    const [tasks, setTasks] = useState<ReviewTask[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const [busyId, setBusyId] = useState<number | null>(null);
+
+    // Approve modal
+    const [approveOpen, setApproveOpen] = useState(false);
+    const [approveTarget, setApproveTarget] = useState<ReviewTask | null>(null);
+    const [approving, setApproving] = useState(false);
+    const [approveForm] = Form.useForm();
+
+    // Rework modal
+    const [reworkOpen, setReworkOpen] = useState(false);
+    const [reworkTarget, setReworkTarget] = useState<ReviewTask | null>(null);
+    const [reworking, setReworking] = useState(false);
+    const [reworkForm] = Form.useForm();
+
+    // Review_Tasks_By_TL.tsx — copy Review_Tasks.tsx, then change just this:
+
+    const fetchQueue = useCallback(() => {
+        setLoading(true);
+        fetch(`${BASE_URL}/api/tasks/tl_review_tasks/`, { headers: { ...authHeaders() } })
+            .then((r) => r.json())
+            .then((d) => setTasks(Array.isArray(d) ? d : d.results || []))
+            .catch(() => message.error("Failed to load your review queue"))
+            .finally(() => setLoading(false));
+    }, []);
+
+    useEffect(() => {
+        fetchQueue();
+    }, [fetchQueue]);
+
+    const filtered = useMemo(() => {
+        if (!search.trim()) return tasks;
+        const q = search.toLowerCase();
+        return tasks.filter((t) =>
+            [t.task_id, t.task_name, t.assigned_to_name].some((f) => f?.toLowerCase().includes(q))
+        );
+    }, [tasks, search]);
+
+    const submittedCount = tasks.filter((t) => t.task_status === "submitted").length;
+    const resubmittedCount = tasks.filter((t) => t.task_status === "resubmitted").length;
+    const underReviewCount = tasks.filter((t) => t.task_status === "under_review").length;
+
+    // ── Move a task into "Under Review" (only needed if it isn't already) ────
+    async function ensureUnderReview(task: ReviewTask): Promise<boolean> {
+        if (task.task_status === "under_review") return true;
+        setBusyId(task.id);
+        try {
+            const res = await fetch(`${BASE_URL}/api/tasks/${task.id}/review/start/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                message.error(err.detail || "Failed to open this task for review");
+                return false;
+            }
+            return true;
+        } catch {
+            message.error("Network error");
+            return false;
+        } finally {
+            setBusyId(null);
+            fetchQueue();
+        }
+    }
+
+    // ── Approve ──────────────────────────────────────────────────────────────
+    const openApprove = async (task: ReviewTask) => {
+        const ok = await ensureUnderReview(task);
+        if (!ok) return;
+        approveForm.resetFields();
+        setApproveTarget(task);
+        setApproveOpen(true);
+    };
+
+    const handleApprove = async () => {
+        if (!approveTarget) return;
+        let values;
+        try {
+            values = await approveForm.validateFields();
+        } catch {
+            return;
+        }
+
+        const derivedRating = QUALITY_OPTIONS.find(
+            (q) => q.value === values.quality_of_task
+        )?.rating ?? 1;
+
+        setApproving(true);
+        try {
+            const res = await fetch(`${BASE_URL}/api/tasks/${approveTarget.id}/review/approve/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+                body: JSON.stringify({
+                    quality_of_task: values.quality_of_task,
+                    rating: derivedRating,          // ← comes from the quality picked, not a separate field
+                    admin_remarks: values.admin_remarks || "",
+                }),
+            });
+            if (res.ok) {
+                message.success("Task approved and marked Completed");
+                setApproveOpen(false);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                message.error(JSON.stringify(err) || "Failed to approve task");
+            }
+        } catch {
+            message.error("Network error");
+        } finally {
+            setApproving(false);
+            fetchQueue();
+        }
+    };
+
+    // ── Request Rework ───────────────────────────────────────────────────────
+    const openRework = async (task: ReviewTask) => {
+        const ok = await ensureUnderReview(task);
+        if (!ok) return;
+        reworkForm.resetFields();
+        setReworkTarget(task);
+        setReworkOpen(true);
+    };
+
+    const handleRework = async () => {
+        if (!reworkTarget) return;
+        let values;
+        try {
+            values = await reworkForm.validateFields();
+        } catch {
+            return;
+        }
+
+        setReworking(true);
+        try {
+            const res = await fetch(`${BASE_URL}/api/tasks/${reworkTarget.id}/review/rework/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+                body: JSON.stringify({ admin_remarks: values.admin_remarks }),
+            });
+            if (res.ok) {
+                message.success("Sent back for rework");
+                setReworkOpen(false);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                message.error(JSON.stringify(err) || "Failed to request rework");
+            }
+        } catch {
+            message.error("Network error");
+        } finally {
+            setReworking(false);
+            fetchQueue();
+        }
+    };
+
+    const columns: ColumnsType<ReviewTask> = [
+        {
+            title: "Task ID",
+            dataIndex: "task_id",
+            key: "task_id",
+            width: 100,
+            render: (v: string) => (
+                <span style={{
+                    fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)",
+                    border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
+                }}>
+                    {v}
+                </span>
+            ),
+        },
+        {
+            title: "Task",
+            key: "task_name",
+            width: 220,
+            render: (_: any, record: ReviewTask) => (
+                <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                        {record.task_name}
+                    </div>
+                    {record.task_details && (
+                        <div style={{
+                            fontSize: 11, color: "var(--text-secondary)", marginTop: 2,
+                            maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                            {record.task_details}
+                        </div>
+                    )}
+                </div>
+            ),
+        },
+        {
+            title: "Department",
+            dataIndex: "department_name",
+            key: "department_name",
+            width: 130,
+            render: (v: string | null) => (
+                v ? (
+                    <span style={{
+                        fontSize: 11, fontWeight: 600, color: "var(--amber)", background: "var(--amber-bg)",
+                        border: "1px solid var(--amber)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
+                    }}>
+                        {v}
+                    </span>
+                ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+            ),
+        },
+        {
+            title: "Employee",
+            dataIndex: "assigned_to_name",
+            key: "assigned_to_name",
+            width: 120,
+            render: (v: string | null) => (
+                v
+                    ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
+                    : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+            ),
+        },
+        {
+            title: "Status",
+            dataIndex: "task_status",
+            key: "task_status",
+            width: 120,
+            render: (v: ReviewStatus) => <StatusTag status={v} />,
+        },
+        {
+            title: "Time (hrs)",
+            key: "time",
+            width: 130,
+            render: (_: any, record: ReviewTask) => (
+                <span className="td-num" style={{ fontSize: 12 }}>
+                    {record.total_time_taken} / {record.allotted_time ?? "—"}
+                </span>
+            ),
+        },
+        {
+            title: "Submitted",
+            dataIndex: "submitted_date",
+            key: "submitted_date",
+            width: 130,
+            render: (v: string | null) => (
+                <span style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>
+                    {v ? dayjs(v).format("DD MMM, HH:mm") : "—"}
+                </span>
+            ),
+        },
+        {
+            title: "Task Sheet",
+            dataIndex: "task_sheet_link",
+            key: "task_sheet_link",
+            width: 100,
+            render: (v: string) => v ? (
+                <a
+                    href={v}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, color: "var(--blue)", fontWeight: 600 }}
+                >
+                    <LinkOutlined /> Open
+                </a>
+            ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
+        },
+        {
+            title: "Employee Remarks",
+            dataIndex: "employee_remarks",
+            key: "employee_remarks",
+            width: 180,
+            render: (v: string) => (
+                <div
+                    style={{
+                        fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 180,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}
+                    title={v}
+                >
+                    {v || "—"}
+                </div>
+            ),
+        },
+        {
+            title: "Rework Count",
+            dataIndex: "rework_count",
+            key: "rework_count",
+            width: 95,
+            render: (v: number) => <span className="td-num" style={{ fontSize: 12 }}>{v}</span>,
+        },
+        {
+            title: "Actions",
+            key: "actions",
+            width: 210,
+            fixed: "right",
+            render: (_: any, record: ReviewTask) => (
+                <div style={{ display: "flex", gap: 6 }}>
+                    <Button
+                        size="small"
+                        loading={busyId === record.id}
+                        icon={<CheckCircleOutlined />}
+                        onClick={() => openApprove(record)}
+                        style={{
+                            fontSize: 11, fontWeight: 700, borderRadius: 6,
+                            background: "var(--green)", color: "#fff", border: "none",
+                        }}
+                    >
+                        Approve
+                    </Button>
+                    <Button
+                        size="small"
+                        loading={busyId === record.id}
+                        icon={<RollbackOutlined />}
+                        onClick={() => openRework(record)}
+                        style={{
+                            fontSize: 11, fontWeight: 700, borderRadius: 6,
+                            color: "var(--red)", background: "var(--red-bg)", borderColor: "var(--red)",
+                        }}
+                    >
+                        Rework
+                    </Button>
+                </div>
+            ),
+        },
+    ];
+
+    return (
+        <div>
+            <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8,
+            }}>
+                <div>
+                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>
+                        Review Queue
+                    </h1>
+                    <p style={{
+                        fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
+                        fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
+                    }}>
+                        Approve or send back tasks you assigned to your team
+                    </p>
+                </div>
+            </div>
+
+            <div className="db-stat-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+                <StatCard
+                    label="Submitted"
+                    value={submittedCount}
+                    changeLabel="Awaiting first review"
+                    changeType={submittedCount > 0 ? "down" : "neutral"}
+                />
+                <StatCard
+                    label="Resubmitted"
+                    value={resubmittedCount}
+                    changeLabel="Sent back after rework"
+                    changeType={resubmittedCount > 0 ? "down" : "neutral"}
+                />
+                <StatCard
+                    label="Under Review"
+                    value={underReviewCount}
+                    changeLabel="Currently being reviewed"
+                    changeType="up"
+                />
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+                <Input
+                    placeholder="Search by task or employee…"
+                    prefix={<SearchOutlined style={{ color: "var(--text-muted)" }} />}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    allowClear
+                    style={{
+                        flex: 1, minWidth: 220, maxWidth: 500, height: 35, padding: "0 14px",
+                        background: "var(--bg-input)", border: "1px solid var(--accent-light)",
+                        borderRadius: 9, color: "var(--text-primary)", fontSize: 13, outline: "none",
+                    }}
+                />
+                <Button
+                    onClick={fetchQueue}
+                    icon={<ReloadOutlined />}
+                    className="db-card-action"
+                    style={{ height: 35, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, paddingInline: 14 }}
+                >
+                    Refresh
+                </Button>
+                <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: "auto" }}>
+                    {filtered.length} of {tasks.length} awaiting review
+                </span>
+            </div>
+
+            <div style={{
+                background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)",
+                overflow: "hidden", boxShadow: "var(--shadow-card)",
+            }}>
+                <Table
+                    columns={columns}
+                    dataSource={filtered}
+                    rowKey="id"
+                    scroll={{ x: 1400 }}
+                    loading={loading}
+                    pagination={{
+                        pageSize: 10,
+                        showSizeChanger: true,
+                        pageSizeOptions: ["10", "20", "50"],
+                        showTotal: (total, range) => `${range[0]}–${range[1]} of ${total}`,
+                        style: { padding: "12px 16px", color: "var(--text-primary)" },
+                    }}
+                    rowClassName={() => "client-table-row"}
+                    style={{ fontSize: 13 }}
+                />
+            </div>
+
+            {/* ── Approve Modal ── */}
+            <Modal
+                open={approveOpen}
+                onCancel={() => setApproveOpen(false)}
+                onOk={handleApprove}
+                confirmLoading={approving}
+                title={
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <CheckCircleOutlined style={{ color: "var(--green)" }} /> Approve Task
+                    </span>
+                }
+                okText="Approve & Complete"
+                okButtonProps={{ style: { background: "var(--green)", borderColor: "var(--green)" } }}
+                width={520}
+                centered
+                destroyOnClose
+            >
+                {approveTarget && (
+                    <>
+                        <div style={{
+                            display: "flex", alignItems: "center", gap: 8, marginBottom: 16,
+                            padding: "8px 12px", background: "var(--bg-input)", borderRadius: 8,
+                        }}>
+                            <span style={{
+                                fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)",
+                                border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6,
+                            }}>
+                                {approveTarget.task_id}
+                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                                {approveTarget.task_name}
+                            </span>
+                        </div>
+
+                        <Form form={approveForm} layout="vertical">
+                            <Form.Item
+                                label="Quality of Task"
+                                name="quality_of_task"
+                                rules={[{ required: true, message: "Required" }]}
+                            >
+                                <Select
+                                    placeholder="Select quality"
+                                    options={QUALITY_OPTIONS}
+                                    optionRender={(option) => {
+                                        const item = QUALITY_OPTIONS.find(
+                                            (q) => q.value === option.value
+                                        );
+
+                                        return (
+                                            <div
+                                                style={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "space-between",
+                                                    width: "100%",
+                                                }}
+                                            >
+                                                <span>{item?.label}</span>
+
+                                                <span
+                                                    style={{
+                                                        color: "#facc15",
+                                                        fontSize: 17,
+                                                        letterSpacing: 2,
+                                                    }}
+                                                >
+                                                    {"★".repeat(item?.rating ?? 0)}
+                                                </span>
+                                            </div>
+                                        );
+                                    }}
+                                />
+                            </Form.Item>
+                            <Form.Item label="Admin Remarks" name="admin_remarks">
+                                <Input.TextArea rows={3} placeholder="Optional notes for the employee…" />
+                            </Form.Item>
+                        </Form>
+                    </>
+                )}
+            </Modal>
+
+            {/* ── Rework Modal ── */}
+            <Modal
+                open={reworkOpen}
+                onCancel={() => setReworkOpen(false)}
+                onOk={handleRework}
+                confirmLoading={reworking}
+                title={
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <RollbackOutlined style={{ color: "var(--red)" }} /> Request Rework
+                    </span>
+                }
+                okText="Send Back for Rework"
+                okButtonProps={{ danger: true }}
+                width={520}
+                centered
+                destroyOnClose
+            >
+                {reworkTarget && (
+                    <>
+                        <div style={{
+                            display: "flex", alignItems: "center", gap: 8, marginBottom: 16,
+                            padding: "8px 12px", background: "var(--bg-input)", borderRadius: 8,
+                        }}>
+                            <span style={{
+                                fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)",
+                                border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6,
+                            }}>
+                                {reworkTarget.task_id}
+                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                                {reworkTarget.task_name}
+                            </span>
+                        </div>
+
+                        <Form form={reworkForm} layout="vertical">
+                            <Form.Item
+                                label="Reason for Rework"
+                                name="admin_remarks"
+                                rules={[{ required: true, message: "Please explain what needs to change" }]}
+                            >
+                                <Input.TextArea rows={4} placeholder="Explain what needs to be fixed or redone…" />
+                            </Form.Item>
+                        </Form>
+                    </>
+                )}
+            </Modal>
+        </div>
+    );
+}

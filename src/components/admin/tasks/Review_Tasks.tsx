@@ -4,7 +4,7 @@
 // Request Rework requires a reason. Styled to match Task_Display.tsx/User_Tasks.tsx.
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Table, Button, Input, Modal, Select, Form, Rate, message } from "antd";
+import { Table, Button, Input, Modal, Select, Form, message } from "antd";
 import {
     SearchOutlined, ReloadOutlined, CheckCircleOutlined, RollbackOutlined, LinkOutlined,
 } from "@ant-design/icons";
@@ -44,11 +44,11 @@ interface ReviewTask {
 }
 
 const QUALITY_OPTIONS = [
-    { value: "excellent", label: "Excellent" },
-    { value: "good", label: "Good" },
-    { value: "needs_improvement", label: "Needs Improvement" },
-    { value: "rework_needed", label: "Rework Needed" },
-    { value: "rejected", label: "Rejected" },
+    { value: "excellent", label: "Excellent", rating: 5 },
+    { value: "good", label: "Good", rating: 4 },
+    { value: "needs_improvement", label: "Needs Improvement", rating: 3 },
+    { value: "rework_needed", label: "Rework Needed", rating: 2 },
+    { value: "rejected", label: "Rejected", rating: 1 },
 ];
 
 const STATUS_META: Record<ReviewStatus, { label: string; color: string; bg: string }> = {
@@ -171,6 +171,10 @@ export default function Review_Tasks() {
             return;
         }
 
+        const derivedRating = QUALITY_OPTIONS.find(
+            (q) => q.value === values.quality_of_task
+        )?.rating ?? 1;
+
         setApproving(true);
         try {
             const res = await fetch(`${BASE_URL}/api/tasks/${approveTarget.id}/review/approve/`, {
@@ -178,7 +182,7 @@ export default function Review_Tasks() {
                 headers: { "Content-Type": "application/json", ...authHeaders() },
                 body: JSON.stringify({
                     quality_of_task: values.quality_of_task,
-                    rating: values.rating,
+                    rating: derivedRating,          // ← comes from the quality picked, not a separate field
                     admin_remarks: values.admin_remarks || "",
                 }),
             });
@@ -531,15 +535,38 @@ export default function Review_Tasks() {
                                 name="quality_of_task"
                                 rules={[{ required: true, message: "Required" }]}
                             >
-                                <Select placeholder="Select quality" options={QUALITY_OPTIONS} />
-                            </Form.Item>
-                            <Form.Item
-                                label="Rating"
-                                name="rating"
-                                rules={[{ required: true, message: "Required" }]}
-                            >
-                                <Rate />
-                            </Form.Item>
+                                <Select
+                                    placeholder="Select quality"
+                                    options={QUALITY_OPTIONS}
+                                    optionRender={(option) => {
+                                        const item = QUALITY_OPTIONS.find(
+                                            (q) => q.value === option.value
+                                        );
+
+                                        return (
+                                            <div
+                                                style={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "space-between",
+                                                    width: "100%",
+                                                }}
+                                            >
+                                                <span>{item?.label}</span>
+
+                                                <span
+                                                    style={{
+                                                        color: "#facc15",
+                                                        fontSize: 17,
+                                                        letterSpacing: 2,
+                                                    }}
+                                                >
+                                                    {"★".repeat(item?.rating ?? 0)}
+                                                </span>
+                                            </div>
+                                        );
+                                    }}
+                                />                            </Form.Item>
                             <Form.Item label="Admin Remarks" name="admin_remarks">
                                 <Input.TextArea rows={3} placeholder="Optional notes for the employee…" />
                             </Form.Item>

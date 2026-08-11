@@ -695,17 +695,61 @@ export default function Active_Task_Admin() {
                             showSearch
                             optionFilterProp="label"
                             options={[
-                                ...taskMasterList.map((t) => ({ value: t.task_name, label: t.label })),
-                                { value: "__ADD_NEW__", label: "＋ Add New Task" },
+                                ...taskMasterList.map((t) => ({
+                                    value: t.task_name,
+                                    label: t.label,
+                                })),
+                                {
+                                    value: "__ADD_NEW__",
+                                    label: "Add New Task",
+                                },
                             ]}
+                            optionRender={(option) => {
+                                const isAddNew = option.value === "__ADD_NEW__";
+
+                                if (isAddNew) {
+                                    return (
+                                        <div
+                                            style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 8,
+                                                color: "#1677ff",
+                                                fontWeight: 600,
+                                                padding: "4px 0",
+                                            }}
+                                        >
+                                            <PlusOutlined
+                                                style={{
+                                                    fontSize: 13,
+                                                    color: "#1677ff",
+                                                }}
+                                            />
+                                            <span>Add New Task</span>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div>
+                                        {option.label}
+                                    </div>
+                                );
+                            }}
                             onChange={(value) => {
                                 if (value === "__ADD_NEW__") {
                                     createForm.setFieldsValue({ task_name: undefined });
                                     setAddTaskMasterOpen(true);
                                     return;
                                 }
-                                const template = taskMasterList.find((t) => t.task_name === value);
-                                if (template) handleTaskMasterSelect(template.id);
+
+                                const template = taskMasterList.find(
+                                    (t) => t.task_name === value
+                                );
+
+                                if (template) {
+                                    handleTaskMasterSelect(template.id);
+                                }
                             }}
                         />
                     </Form.Item>

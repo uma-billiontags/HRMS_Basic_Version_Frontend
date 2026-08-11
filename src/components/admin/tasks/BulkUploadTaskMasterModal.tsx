@@ -19,7 +19,9 @@ function authHeaders(): HeadersInit {
 
 interface ParsedRow {
     task_name: string;
-    default_hours: number | string;
+    hours: number;
+    minutes: number;
+    default_hours: number; // combined value actually sent to the API
     _rowNum: number;
 }
 
@@ -38,10 +40,22 @@ interface Props {
     onSaved?: () => void;
 }
 
+function formatHM(hours: number, minutes: number) {
+    if (hours && minutes) return `${hours}h ${minutes}m`;
+    if (hours) return `${hours}h`;
+    if (minutes) return `${minutes}m`;
+    return "—";
+}
+
 /**
  * Bulk Excel/CSV upload for the Task Master catalog. This lives ONLY on the
  * Task Master Admin screen, opened by its own "Bulk Upload" button — the
  * Create Task form's "+ Add New Task" flow stays single-add-only.
+ *
+ * Accepts hours and/or minutes columns per row (same as the single Add/Edit
+ * modal's Hours + Minutes fields) and combines them into one default_hours
+ * decimal before sending to the API, since the backend (TaskMaster model /
+ * bulk_create_task_master view) only stores a single decimal-hours field.
  */
 export default function BulkUploadTaskMasterModal({ open, onClose, onSaved }: Props) {
     const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
@@ -78,16 +92,32 @@ export default function BulkUploadTaskMasterModal({ open, onClose, onSaved }: Pr
                         const hoursKey = Object.keys(row).find((k) =>
                             ["hours", "defaulthours", "hrs"].includes(k.trim().toLowerCase().replace(/\s|_/g, ""))
                         );
+                        const minutesKey = Object.keys(row).find((k) =>
+                            ["minutes", "mins", "min"].includes(k.trim().toLowerCase().replace(/\s|_/g, ""))
+                        );
+
+                        const task_name = String(nameKey ? row[nameKey] : "").trim();
+                        const rawHours = hoursKey ? row[hoursKey] : "";
+                        const rawMinutes = minutesKey ? row[minutesKey] : "";
+
+                        const hours = Number(rawHours) || 0;
+                        const minutes = Number(rawMinutes) || 0;
+                        const default_hours = Math.round((hours + minutes / 60) * 100) / 100;
+
                         return {
-                            task_name: String(nameKey ? row[nameKey] : "").trim(),
-                            default_hours: hoursKey ? row[hoursKey] : "",
+                            task_name,
+                            hours,
+                            minutes,
+                            default_hours,
                             _rowNum: idx + 2, // header row + 1-indexing, matches what admin sees in Excel
                         };
                     })
-                    .filter((r) => r.task_name || r.default_hours);
+                    .filter((r) => r.task_name || r.hours || r.minutes);
 
                 if (normalized.length === 0) {
-                    message.error('No valid rows found. Make sure the sheet has "task_name" and "hours" columns.');
+                    message.error(
+                        'No valid rows found. Make sure the sheet has a "task_name" column and at least one of "hours" or "minutes".'
+                    );
                     return;
                 }
                 setParsedRows(normalized);
@@ -111,6 +141,17 @@ export default function BulkUploadTaskMasterModal({ open, onClose, onSaved }: Pr
 
     const handleSubmit = async () => {
         if (parsedRows.length === 0) return;
+
+        // Guard against rows where both hours and minutes came out to 0 —
+        // same "duration can't be zero" rule as the single Add/Edit modal.
+        const zeroDurationRows = parsedRows.filter((r) => r.default_hours <= 0);
+        if (zeroDurationRows.length > 0) {
+            message.error(
+                `${zeroDurationRows.length} row${zeroDurationRows.length !== 1 ? "s have" : " has"} no hours or minutes set. Fix the file and re-upload.`
+            );
+            return;
+        }
+
         setSubmitting(true);
         try {
             const res = await fetch(`${BASE_URL}/api/tasks/task_master/bulk_create/`, {
@@ -151,7 +192,7 @@ export default function BulkUploadTaskMasterModal({ open, onClose, onSaved }: Pr
             onCancel={handleClose}
             footer={null}
             title="Bulk Upload Tasks"
-            width={640}
+            width={680}
             centered
             destroyOnClose
         >
@@ -169,7 +210,7 @@ export default function BulkUploadTaskMasterModal({ open, onClose, onSaved }: Pr
                         Click or drag an Excel file here
                     </p>
                     <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>
-                        Two columns: <b>task_name</b> and <b>hours</b>. .xlsx, .xls, or .csv
+                        Columns: <b>task_name</b>, and <b>hours</b> and/or <b>minutes</b>. .xlsx, .xls, or .csv
                     </p>
                 </Upload.Dragger>
                 {fileName && (
@@ -189,8 +230,16 @@ export default function BulkUploadTaskMasterModal({ open, onClose, onSaved }: Pr
                         columns={[
                             { title: "Row", dataIndex: "_rowNum", width: 60 },
                             { title: "Task Name", dataIndex: "task_name" },
-                            { title: "Hours", dataIndex: "default_hours", width: 100 },
+                            { title: "Hours", dataIndex: "hours", width: 80 },
+                            { title: "Minutes", dataIndex: "minutes", width: 90 },
+                            {
+                                title: "Duration",
+                                key: "duration",
+                                width: 110,
+                                render: (_: any, r: ParsedRow) => formatHM(r.hours, r.minutes),
+                            },
                         ]}
+                        rowClassName={(r) => (r.default_hours <= 0 ? "bulk-row-error" : "")}
                     />
                 </div>
             )}
