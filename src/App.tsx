@@ -26,6 +26,8 @@ import Active_Task_TL from "./components/employee/tasks/Active_Task_TL";
 import Task_Master_Admin from "./components/admin/tasks/Task_Master_Admin";
 import Review_Tasks_By_TL from "./components/employee/tasks/Review_Tasks_By_TL";
 import Team_Access from "./components/admin/Team_Access";
+import Recurring_Task_Admin from "./components/admin/tasks/Recurring_Task_Admin";
+import Recurring_Task_TL from "./components/employee/tasks/Recurring_Task_TL";
 
 
 // Shared shell: Sidebar on the left, page content on the right.
@@ -76,6 +78,7 @@ function App() {
               <Route path="/admin/audit_history" element={<Audit_History_Admin />} />
               <Route path="/admin/task_master" element={<Task_Master_Admin />} />
               <Route path="/admin/team_access" element={<Team_Access />} />
+              <Route path="/admin/recurring_tasks" element={<Recurring_Task_Admin />} />
 
             </Route>
           </Route>
@@ -91,6 +94,7 @@ function App() {
               <Route path="/employee/audit_history" element={<Audit_History_Employee />} />
               <Route path="/employee/tl_tasks" element={<Active_Task_TL />} />
               <Route path="/employee/tl_review_tasks" element={<Review_Tasks_By_TL />} />
+              <Route path="/employee/recurring_tasks" element={<Recurring_Task_TL />} />
 
             </Route>
           </Route>

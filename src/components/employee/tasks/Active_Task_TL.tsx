@@ -1,14 +1,16 @@
 // Active_Task_TL.tsx
 // TL dashboard — mirrors Active_Task_Admin.tsx, including the Create Task
-// flow (TaskMaster catalog dropdown + create-and-assign in one step). Only
-// scoping differs: a TL only sees/manages tasks THEY personally created
-// (via /api/tasks/tl_tasks/, not get_all_tasks/), and create_and_assign/
-// attributes new tasks to assigned_by_employee instead of assigned_by_admin
+// flow (TaskMaster catalog dropdown + create-and-assign in one step, plus
+// the "Repeats Daily" recurring option). Only scoping differs: a TL only
+// sees/manages tasks THEY personally created (via /api/tasks/tl_tasks/,
+// not get_all_tasks/), and create_and_assign/ + recurring/create/ attribute
+// new tasks/rules to assigned_by_employee instead of assigned_by_admin
 // automatically based on who's logged in.
 //
 // Ownership enforcement (only manage tasks you created) is done server-side
-// in assign_task/hold_task/cancel_task/etc via _owns_task_for_management —
-// this screen never shows tasks created by Admin or another TL in the first
+// in assign_task/hold_task/cancel_task/etc via _owns_task_for_management,
+// and for recurring rules via _owns_recurring_for_management — this screen
+// never shows tasks/rules created by Admin or another TL in the first
 // place, since tl_tasks/ is already scoped, so there's nothing to hide here.
 //
 // "Self Assign" remains in the Actions dropdown for reassigning an existing
@@ -16,7 +18,7 @@
 // pick themselves directly from the Assign To list, same as Admin's flow.
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Table, Button, Input, Modal, Select, Form, message, DatePicker, InputNumber, Tag, Dropdown } from "antd";
+import { Table, Button, Input, Modal, Select, Form, message, DatePicker, InputNumber, Tag, Dropdown, Checkbox } from "antd";
 import {
     SearchOutlined, ReloadOutlined, PlusOutlined, UserSwitchOutlined,
     FileTextOutlined, PauseCircleOutlined, PlayCircleOutlined,
@@ -84,12 +86,11 @@ interface TaskMasterOption {
     label: string;   // "Logo Creation - 1hr"
 }
 
-// ── Statuses shown on THIS screen — everything except Completed/Cancelled.
-// Archived is already excluded server-side by tl_tasks/ (unless
-// include_archived=true is passed, which this screen never does).
+// ── Statuses shown on THIS screen. Submitted / Resubmitted / Under Review
+// have moved on to the Review Tasks screen — once an employee submits,
+// it disappears from here so this table only shows work not yet handed off.
 const ACTIVE_STATUSES: TaskStatus[] = [
-    "not_started", "in_progress", "paused", "submitted",
-    "under_review", "rework_needed", "resubmitted", "on_hold",
+    "not_started", "in_progress", "paused", "rework_needed", "on_hold",
 ];
 
 const STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string }> = {
@@ -177,6 +178,9 @@ export default function Active_Task_TL() {
     const [createDeptId, setCreateDeptId] = useState<string | undefined>(undefined);
     const [addTaskMasterOpen, setAddTaskMasterOpen] = useState(false);
     const [taskMasterList, setTaskMasterList] = useState<TaskMasterOption[]>([]);
+
+    // ── NEW: recurring/"Repeats Daily" state ──────────────────────────────
+    const [isDaily, setIsDaily] = useState(false);
 
     const [assignOpen, setAssignOpen] = useState(false);
     const [assigning, setAssigning] = useState(false);
@@ -274,12 +278,13 @@ export default function Active_Task_TL() {
         const template = taskMasterList.find((t) => t.id === templateId);
         if (!template) return;
 
-        const dueDate = dayjs().add(Number(template.default_hours), "hour");
-
         createForm.setFieldsValue({
             task_name: template.task_name,       // stored on the Task as plain text, same as before
             allotted_time: template.default_hours,
-            due_date: dueDate,                   // TL can still change this — DatePicker stays enabled
+            // Due Date only makes sense for a one-time task — skip it when
+            // "Repeats Daily" is checked, since each occurrence gets its own
+            // due date automatically (see generate_recurring_tasks).
+            ...(isDaily ? {} : { due_date: dayjs().add(Number(template.default_hours), "hour") }),
         });
     };
 
@@ -312,6 +317,7 @@ export default function Active_Task_TL() {
     const openCreate = () => {
         createForm.resetFields();
         setCreateDeptId(undefined);
+        setIsDaily(false);
         setCreateOpen(true);
     };
 
@@ -322,8 +328,9 @@ export default function Active_Task_TL() {
 
     const employeesForCreateDept = employees.filter((e) => e.department === createDeptId);
 
-    // ── Create + assign in one shot, same as Admin — backend attributes it
-    // to assigned_by_employee automatically since the caller is a TL.
+    // ── Create + assign in one shot (or create the recurring rule when
+    // "Repeats Daily" is checked) — backend attributes it to
+    // assigned_by_employee automatically since the caller is a TL.
     const handleCreate = async () => {
         let values;
         try {
@@ -334,24 +341,44 @@ export default function Active_Task_TL() {
 
         setCreating(true);
         try {
-            const res = await fetch(`${BASE_URL}/api/tasks/create_and_assign/`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...authHeaders() },
-                body: JSON.stringify({
+            const url = isDaily
+                ? `${BASE_URL}/api/tasks/recurring/create/`
+                : `${BASE_URL}/api/tasks/create_and_assign/`;
+
+            const body = isDaily
+                ? {
+                    task_name: values.task_name,
+                    task_details: values.task_details,
+                    assigned_to: values.assigned_to,
+                    priority: values.priority,
+                    allotted_time: values.allotted_time,
+                    start_date: values.recurring_start_date.format("YYYY-MM-DD"),
+                    end_date: values.recurring_end_date
+                        ? values.recurring_end_date.format("YYYY-MM-DD")
+                        : null,
+                }
+                : {
                     task_name: values.task_name,
                     task_details: values.task_details,
                     assigned_to: values.assigned_to,
                     priority: values.priority,
                     due_date: values.due_date ? values.due_date.format("YYYY-MM-DD") : null,
                     allotted_time: values.allotted_time,
-                }),
+                };
+
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+                body: JSON.stringify(body),
             });
 
             if (res.ok) {
                 message.success(
-                    values.assigned_to === myId
-                        ? "Task created and self-assigned"
-                        : "Task created and assigned"
+                    isDaily
+                        ? "Daily task scheduled"
+                        : values.assigned_to === myId
+                            ? "Task created and self-assigned"
+                            : "Task created and assigned"
                 );
                 setCreateOpen(false);
                 fetchTasks();
@@ -746,9 +773,10 @@ export default function Active_Task_TL() {
                 />
             </div>
 
-            {/* ── Create Task modal — now matches Admin's: TaskMaster catalog
+            {/* ── Create Task modal — matches Admin's: TaskMaster catalog
                 dropdown (with inline "Add New Task"), Department, Assign To,
-                Priority, Due Date, Allotted Time, all in one create+assign step. ── */}
+                Priority, Due Date, Allotted Time, plus the "Repeats Daily"
+                recurring option, all in one create+assign step. ── */}
             <Modal
                 open={createOpen}
                 onCancel={() => setCreateOpen(false)}
@@ -759,7 +787,7 @@ export default function Active_Task_TL() {
                         <FileTextOutlined /> Create Task
                     </span>
                 }
-                okText="Create & Assign"
+                okText={isDaily ? "Schedule Daily Task" : "Create & Assign"}
                 width={640}
                 centered
                 destroyOnClose
@@ -836,6 +864,30 @@ export default function Active_Task_TL() {
                     >
                         <Input.TextArea rows={3} placeholder="Describe what needs to be done…" />
                     </Form.Item>
+                     <Form.Item name="is_daily" valuePropName="checked">
+                        <Checkbox onChange={(e) => setIsDaily(e.target.checked)}>
+                            Repeats Daily
+                        </Checkbox>
+                    </Form.Item>
+
+                    {isDaily && (
+                        <div className="db-form-row">
+                            <Form.Item
+                                label="Start Date"
+                                name="recurring_start_date"
+                                rules={[{ required: isDaily, message: "Required" }]}
+                            >
+                                <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
+                            </Form.Item>
+                            <Form.Item
+                                label="End Date (optional)"
+                                name="recurring_end_date"
+                                help="Leave blank to repeat until you stop it manually"
+                            >
+                                <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
+                            </Form.Item>
+                        </div>
+                    )}
 
                     <div className="db-form-row">
                         <Form.Item
@@ -876,13 +928,19 @@ export default function Active_Task_TL() {
                                 options={priorities.map((p) => ({ value: p.value, label: p.label }))}
                             />
                         </Form.Item>
-                        <Form.Item
-                            label="Due Date"
-                            name="due_date"
-                            rules={[{ required: true, message: "Required" }]}
-                        >
-                            <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
-                        </Form.Item>
+                        {/* Due Date only applies to a one-time task. For a daily
+                            recurring task, each day's occurrence gets its own
+                            due_date automatically (set to that day's date) —
+                            hidden and skipped entirely when isDaily is true. */}
+                        {!isDaily && (
+                            <Form.Item
+                                label="Due Date"
+                                name="due_date"
+                                rules={[{ required: true, message: "Required" }]}
+                            >
+                                <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
+                            </Form.Item>
+                        )}
                     </div>
 
                     <Form.Item
@@ -1025,11 +1083,10 @@ export default function Active_Task_TL() {
                 onClose={() => setAddTaskMasterOpen(false)}
                 onSaved={fetchTaskMaster}
                 onCreated={(created) => {
-                    const dueDate = dayjs().add(Number(created.default_hours), "hour");
                     createForm.setFieldsValue({
                         task_name: created.task_name,
                         allotted_time: created.default_hours,
-                        due_date: dueDate,
+                        ...(isDaily ? {} : { due_date: dayjs().add(Number(created.default_hours), "hour") }),
                     });
                 }}
             />

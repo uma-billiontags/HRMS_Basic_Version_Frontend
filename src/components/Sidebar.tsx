@@ -24,8 +24,9 @@ import {
     History,
     BarChart3,
     LogOut,
-     ListChecks,
+    ListChecks,
     UsersRound,
+    Repeat,
     type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "./AuthContext";
@@ -56,6 +57,7 @@ const ADMIN_NAV: NavGroup[] = [
             { label: "Archive Tasks", icon: Archive, to: "/admin/archive_tasks" },
             { label: "Cancel Tasks", icon: XCircle, to: "/admin/cancel_tasks" },
             { label: "Review Tasks", icon: ClipboardCheck, to: "/admin/review_tasks" },
+            { label: "Recurring Tasks", icon: Repeat, to: "/admin/recurring_tasks" },
         ],
     },
     // {
@@ -66,13 +68,13 @@ const ADMIN_NAV: NavGroup[] = [
     //         { label: "Rejected Requests", icon: XCircle, to: "/admin/rejected_requests" },
     //     ],
     // },
-     {
+    {
         section: "Master Data",
         items: [
             { label: "Task Master", icon: ListChecks, to: "/admin/task_master" },
         ],
     },
-      {
+    {
         section: "TEAM ACCESS",
         items: [
             { label: "Team Access", icon: UsersRound, to: "/admin/team_access" },
@@ -85,7 +87,7 @@ const ADMIN_NAV: NavGroup[] = [
             { label: "Audit History", icon: History, to: "/admin/audit_history" },
         ],
     },
-   
+
 ];
 
 const EMPLOYEE_NAV: NavGroup[] = [
@@ -95,7 +97,10 @@ const EMPLOYEE_NAV: NavGroup[] = [
     },
     {
         section: "TASKS",
-        items: [{ label: "My Tasks", icon: ClipboardList, to: "/employee/active_tasks" }],
+        items: [
+        { label: "My Tasks", icon: ClipboardList, to: "/employee/active_tasks" },
+        ],
+
     },
     // {
     //     section: "REQUESTS",
@@ -126,12 +131,15 @@ const TL_NAV: NavGroup[] = [
             { label: "My Task", icon: ClipboardList, to: "/employee/active_tasks" },
             { label: "Team Tasks", icon: UsersRound, to: "/employee/tl_tasks" },
             { label: "Review Tasks", icon: CheckCircle2, to: "/employee/tl_review_tasks" },
+            { label: "Recurring Tasks", icon: Repeat, to: "/employee/recurring_tasks" },
         ],
     },
-    { section: "INSIGHTS", items: [
-        { label: "Reports", icon: BarChart3, to: "/employee/reports" },
-        { label: "Audit History", icon: History, to: "/employee/audit_history" },
-    ] },
+    {
+        section: "INSIGHTS", items: [
+            { label: "Reports", icon: BarChart3, to: "/employee/reports" },
+            { label: "Audit History", icon: History, to: "/employee/audit_history" },
+        ]
+    },
 ];
 // ── Props ───────────────────────────────────────────────────────────────────
 
@@ -208,7 +216,7 @@ export default function Sidebar({ role, userName, isTL = false }: SidebarProps) 
                     </div>
                 </div>
 
-             
+
                 <div
                     onClick={handleLogout}
                     style={{

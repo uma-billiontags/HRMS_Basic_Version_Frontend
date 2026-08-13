@@ -30,6 +30,7 @@ function authHeaders(): HeadersInit {
 
 interface EmployeeCredential {
     id: number;
+    employee_id: string;
     name: string;
     email: string;
     department: string;
@@ -104,6 +105,7 @@ export default function Team_Access() {
     const openEdit = (record: EmployeeCredential) => {
         setEditing(record);
         form.setFieldsValue({
+            employee_id: record.employee_id,
             name: record.name,
             email: record.email,
             department: record.department || undefined,
@@ -127,6 +129,7 @@ export default function Team_Access() {
         const isEdit = !!editing;
 
         const payload: Record<string, unknown> = {
+            employee_id: values.employee_id,
             name: values.name,
             email: values.email,
             department: values.department || "",
@@ -153,7 +156,7 @@ export default function Team_Access() {
                 fetchDepartments(); // in case a brand-new department was typed
             } else {
                 const err = await res.json().catch(() => ({}));
-                message.error(err.email?.[0] || err.name?.[0] || err.password?.[0] || JSON.stringify(err) || "Save failed");
+                message.error(err.employee_id?.[0] || err.email?.[0] || err.name?.[0] || err.password?.[0] || JSON.stringify(err) || "Save failed");
             }
         } catch {
             message.error("Network error");
@@ -211,11 +214,22 @@ export default function Team_Access() {
     const filtered = users.filter((u) => {
         if (!search.trim()) return true;
         const q = search.toLowerCase();
-        return [u.name, u.email, u.department, u.role].some((f) => f?.toLowerCase().includes(q));
+        return [u.employee_id, u.name, u.email, u.department, u.role].some((f) => f?.toLowerCase().includes(q));
     });
 
     // ── Table columns ────────────────────────────────────────────────────────
     const columns: ColumnsType<EmployeeCredential> = [
+        {
+            title: "Employee ID",
+            dataIndex: "employee_id",
+            key: "employee_id",
+            width: 110,
+            render: (v: string) => (
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--amber)", background: "var(--amber-bg)", border: "1px solid var(--amber)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", }}>
+                    {v || "—"}
+                </span>
+            ),
+        },
         {
             title: "Name",
             dataIndex: "name",
@@ -401,9 +415,19 @@ export default function Team_Access() {
             >
                 <Form form={form} layout="vertical">
                     <div className="db-form-row">
+                        <Form.Item
+                            label="Employee ID"
+                            name="employee_id"
+                            rules={[{ required: true, message: "Required" }]}
+                        >
+                            <Input placeholder="e.g. EMP-0142" />
+                        </Form.Item>
                         <Form.Item label="Name" name="name" rules={[{ required: true, message: "Required" }]}>
                             <Input placeholder="e.g. Jane Doe" />
                         </Form.Item>
+                    </div>
+                    <div className="db-form-row">
+                       
                         <Form.Item
                             label="Email"
                             name="email"
@@ -411,10 +435,7 @@ export default function Team_Access() {
                         >
                             <Input placeholder="name@company.com" />
                         </Form.Item>
-                    </div>
-
-                    <div className="db-form-row">
-                        <Form.Item label="Department" name="department">
+                         <Form.Item label="Department" name="department">
                             <Select
                                 placeholder="Select a department"
                                 showSearch
@@ -445,20 +466,23 @@ export default function Team_Access() {
                                 }}
                             />
                         </Form.Item>
-
-                        <Form.Item label="Role" name="role">
-                            <Input placeholder="e.g. TL, Developer, Designer" />
-                        </Form.Item>
                     </div>
 
                     <div className="db-form-row">
-                        <Form.Item
+                        <Form.Item label="Role" name="role">
+                            <Input placeholder="e.g. TL, Developer, Designer" />
+                        </Form.Item>
+                         <Form.Item
                             label="Password"
                             name="password"
                             rules={editing ? [] : [{ required: true, message: "Password is required" }]}
                         >
                             <Input.Password placeholder={editing ? "Leave blank to keep unchanged" : "Min 8 characters"} />
                         </Form.Item>
+                    </div>
+
+                    <div className="db-form-row">
+                       
                         <Form.Item label="Is Active" name="is_active" valuePropName="checked">
                             <div style={{ display: "flex", alignItems: "center", gap: 10, height: 36 }}>
                                 <Switch defaultChecked />

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Table, Button, Input, Modal, Select, Form, message, DatePicker, InputNumber, Tag, Dropdown } from "antd";
+import { Table, Button, Input, Modal, Select, Form, message, DatePicker, InputNumber, Tag, Dropdown, Checkbox } from "antd";
 import {
     SearchOutlined, ReloadOutlined, PlusOutlined, UserSwitchOutlined,
     FileTextOutlined, PauseCircleOutlined, PlayCircleOutlined,
@@ -71,8 +71,8 @@ interface TaskMasterOption {
 // Archived is already excluded server-side by get_all_tasks (unless
 // include_archived=true is passed, which this screen never does).
 const ACTIVE_STATUSES: TaskStatus[] = [
-    "not_started", "in_progress", "paused", "submitted",
-    "under_review", "rework_needed", "resubmitted", "on_hold",
+    "not_started", "in_progress", "paused",
+   "rework_needed", "on_hold",
 ];
 
 const STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string }> = {
@@ -152,6 +152,8 @@ export default function Active_Task_Admin() {
     const [createOpen, setCreateOpen] = useState(false);
     const [creating, setCreating] = useState(false);
     const [createForm] = Form.useForm();
+
+    const [isDaily, setIsDaily] = useState(false);
 
     const [assignOpen, setAssignOpen] = useState(false);
     const [assigning, setAssigning] = useState(false);
@@ -241,12 +243,10 @@ export default function Active_Task_Admin() {
         const template = taskMasterList.find((t) => t.id === templateId);
         if (!template) return;
 
-        const dueDate = dayjs().add(Number(template.default_hours), "hour");
-
         createForm.setFieldsValue({
-            task_name: template.task_name,       // stored on the Task as plain text, same as before
+            task_name: template.task_name,
             allotted_time: template.default_hours,
-            due_date: dueDate,                   // admin can still change this — DatePicker stays enabled
+            ...(isDaily ? {} : { due_date: dayjs().add(Number(template.default_hours), "hour") }),
         });
     };
 
@@ -274,6 +274,7 @@ export default function Active_Task_Admin() {
     const openCreate = () => {
         createForm.resetFields();
         setCreateDeptId(undefined);
+        setIsDaily(false);          // ← add this
         setCreateOpen(true);
     };
 
@@ -293,21 +294,39 @@ export default function Active_Task_Admin() {
 
         setCreating(true);
         try {
-            const res = await fetch(`${BASE_URL}/api/tasks/create_and_assign/`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...authHeaders() },
-                body: JSON.stringify({
+            const url = isDaily
+                ? `${BASE_URL}/api/tasks/recurring/create/`
+                : `${BASE_URL}/api/tasks/create_and_assign/`;
+
+            const body = isDaily
+                ? {
+                    task_name: values.task_name,
+                    task_details: values.task_details,
+                    assigned_to: values.assigned_to,
+                    priority: values.priority,
+                    allotted_time: values.allotted_time,
+                    start_date: values.recurring_start_date.format("YYYY-MM-DD"),
+                    end_date: values.recurring_end_date
+                        ? values.recurring_end_date.format("YYYY-MM-DD")
+                        : null,
+                }
+                : {
                     task_name: values.task_name,
                     task_details: values.task_details,
                     assigned_to: values.assigned_to,
                     priority: values.priority,
                     due_date: values.due_date ? values.due_date.format("YYYY-MM-DD") : null,
                     allotted_time: values.allotted_time,
-                }),
+                };
+
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+                body: JSON.stringify(body),
             });
 
             if (res.ok) {
-                message.success("Task created and assigned");
+                message.success(isDaily ? "Daily task scheduled" : "Task created and assigned");
                 setCreateOpen(false);
                 fetchTasks();
             } else {
@@ -760,6 +779,30 @@ export default function Active_Task_Admin() {
                     >
                         <Input.TextArea rows={3} placeholder="Describe what needs to be done…" />
                     </Form.Item>
+                    <Form.Item name="is_daily" valuePropName="checked">
+                        <Checkbox onChange={(e) => setIsDaily(e.target.checked)}>
+                            Repeats Daily
+                        </Checkbox>
+                    </Form.Item>
+
+                    {isDaily && (
+                        <div className="db-form-row">
+                            <Form.Item
+                                label="Start Date"
+                                name="recurring_start_date"
+                                rules={[{ required: isDaily, message: "Required" }]}
+                            >
+                                <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
+                            </Form.Item>
+                            <Form.Item
+                                label="End Date (optional)"
+                                name="recurring_end_date"
+                                help="Leave blank to repeat until you stop it manually"
+                            >
+                                <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
+                            </Form.Item>
+                        </div>
+                    )}
 
                     <div className="db-form-row">
                         <Form.Item
@@ -797,13 +840,19 @@ export default function Active_Task_Admin() {
                                 options={priorities.map((p) => ({ value: p.value, label: p.label }))}
                             />
                         </Form.Item>
-                        <Form.Item
-                            label="Due Date"
-                            name="due_date"
-                            rules={[{ required: true, message: "Required" }]}
-                        >
-                            <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
-                        </Form.Item>
+                        {/* Due Date only applies to a one-time task. For a daily recurring
+        task, each day's occurrence gets its own due_date automatically
+        (set to that day's date) — there's no single due date to pick,
+        so this field is hidden and skipped entirely when isDaily is true. */}
+                        {!isDaily && (
+                            <Form.Item
+                                label="Due Date"
+                                name="due_date"
+                                rules={[{ required: true, message: "Required" }]}
+                            >
+                                <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
+                            </Form.Item>
+                        )}
                     </div>
 
                     <Form.Item
@@ -813,6 +862,7 @@ export default function Active_Task_Admin() {
                     >
                         <InputNumber style={{ width: "100%" }} min={0.5} step={0.5} placeholder="e.g. 8" />
                     </Form.Item>
+
                 </Form>
             </Modal>
             <Modal
