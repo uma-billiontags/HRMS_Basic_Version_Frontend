@@ -874,7 +874,7 @@ export default function Active_Task_TL() {
                         {isDaily && (
                             <Form.Item name="exclude_sundays" valuePropName="checked">
                                 <Checkbox>Exclude Sundays</Checkbox>
-                            </Form.Item>
+                            </Form.Item> 
                         )}
                     </div>
                     {isDaily && (
