@@ -356,6 +356,7 @@ export default function Active_Task_TL() {
                     end_date: values.recurring_end_date
                         ? values.recurring_end_date.format("YYYY-MM-DD")
                         : null,
+                    exclude_sundays: !!values.exclude_sundays,
                 }
                 : {
                     task_name: values.task_name,
@@ -864,12 +865,18 @@ export default function Active_Task_TL() {
                     >
                         <Input.TextArea rows={3} placeholder="Describe what needs to be done…" />
                     </Form.Item>
-                     <Form.Item name="is_daily" valuePropName="checked">
-                        <Checkbox onChange={(e) => setIsDaily(e.target.checked)}>
-                            Repeats Daily
-                        </Checkbox>
-                    </Form.Item>
-
+                    <div className="db-form-row">
+                        <Form.Item name="is_daily" valuePropName="checked">
+                            <Checkbox onChange={(e) => setIsDaily(e.target.checked)}>
+                                Repeats Daily
+                            </Checkbox>
+                        </Form.Item>
+                        {isDaily && (
+                            <Form.Item name="exclude_sundays" valuePropName="checked">
+                                <Checkbox>Exclude Sundays</Checkbox>
+                            </Form.Item>
+                        )}
+                    </div>
                     {isDaily && (
                         <div className="db-form-row">
                             <Form.Item
@@ -888,7 +895,6 @@ export default function Active_Task_TL() {
                             </Form.Item>
                         </div>
                     )}
-
                     <div className="db-form-row">
                         <Form.Item
                             label="Department"
