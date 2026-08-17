@@ -427,7 +427,7 @@ export default function Team_Access() {
                         </Form.Item>
                     </div>
                     <div className="db-form-row">
-                       
+
                         <Form.Item
                             label="Email"
                             name="email"
@@ -435,7 +435,7 @@ export default function Team_Access() {
                         >
                             <Input placeholder="name@company.com" />
                         </Form.Item>
-                         <Form.Item label="Department" name="department">
+                        <Form.Item label="Department" name="department">
                             <Select
                                 placeholder="Select a department"
                                 showSearch
@@ -472,17 +472,17 @@ export default function Team_Access() {
                         <Form.Item label="Role" name="role">
                             <Input placeholder="e.g. TL, Developer, Designer" />
                         </Form.Item>
-                         <Form.Item
+                        <Form.Item
                             label="Password"
                             name="password"
                             rules={editing ? [] : [{ required: true, message: "Password is required" }]}
                         >
-                            <Input.Password placeholder={editing ? "Leave blank to keep unchanged" : "Min 8 characters"} />
+                            <Input.Password placeholder={editing ? "Leave blank to keep unchanged" : "Enter the password"} />
                         </Form.Item>
                     </div>
 
                     <div className="db-form-row">
-                       
+
                         <Form.Item label="Is Active" name="is_active" valuePropName="checked">
                             <div style={{ display: "flex", alignItems: "center", gap: 10, height: 36 }}>
                                 <Switch defaultChecked />

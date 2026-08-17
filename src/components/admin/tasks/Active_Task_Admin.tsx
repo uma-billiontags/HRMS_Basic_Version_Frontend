@@ -96,6 +96,17 @@ const PRIORITY_COLOR: Record<string, { color: string; bg: string }> = {
     urgent: { color: "var(--red)", bg: "var(--red-bg)" },
 };
 
+const WEEKDAY_OPTIONS = [
+    { label: "Mon", value: 0 },
+    { label: "Tue", value: 1 },
+    { label: "Wed", value: 2 },
+    { label: "Thu", value: 3 },
+    { label: "Fri", value: 4 },
+    { label: "Sat", value: 5 },
+    { label: "Sun", value: 6 },
+];
+const DEFAULT_WEEKDAYS = [0, 1, 2, 3, 4, 5]; // all except Sunday
+
 function StatusTag({ status }: { status: TaskStatus }) {
     const meta = STATUS_META[status] ?? STATUS_META.not_started;
     return (
@@ -154,6 +165,7 @@ export default function Active_Task_Admin() {
     const [createForm] = Form.useForm();
 
     const [isDaily, setIsDaily] = useState(false);
+    const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>(DEFAULT_WEEKDAYS);
 
     const [assignOpen, setAssignOpen] = useState(false);
     const [assigning, setAssigning] = useState(false);
@@ -275,6 +287,7 @@ export default function Active_Task_Admin() {
         createForm.resetFields();
         setCreateDeptId(undefined);
         setIsDaily(false);          // ← add this
+        setSelectedWeekdays(DEFAULT_WEEKDAYS);   // ← add this
         setCreateOpen(true);
     };
 
@@ -291,7 +304,10 @@ export default function Active_Task_Admin() {
         } catch {
             return;
         }
-
+        if (isDaily && selectedWeekdays.length === 0) {
+            message.error("Select at least one day of the week.");
+            return;
+        }
         setCreating(true);
         try {
             const url = isDaily
@@ -309,7 +325,7 @@ export default function Active_Task_Admin() {
                     end_date: values.recurring_end_date
                         ? values.recurring_end_date.format("YYYY-MM-DD")
                         : null,
-                    exclude_sundays: !!values.exclude_sundays,
+                    weekdays: selectedWeekdays,
                 }
                 : {
                     task_name: values.task_name,
@@ -787,8 +803,12 @@ export default function Active_Task_Admin() {
                             </Checkbox>
                         </Form.Item>
                         {isDaily && (
-                            <Form.Item name="exclude_sundays" valuePropName="checked">
-                                <Checkbox>Exclude Sundays</Checkbox>
+                            <Form.Item label="Repeat On">
+                                <Checkbox.Group
+                                    options={WEEKDAY_OPTIONS}
+                                    value={selectedWeekdays}
+                                    onChange={(vals) => setSelectedWeekdays(vals as number[])}
+                                />
                             </Form.Item>
                         )}
                     </div>
