@@ -4,7 +4,7 @@
 // server-side, so this component just renders whatever comes back — no
 // client-side recomputation of totals.
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Table, Button, Select, DatePicker, message } from "antd";
 import { ReloadOutlined, DownloadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
@@ -206,11 +206,6 @@ export default function Reports_Admin() {
         fetchReport();
     }, [fetchReport]);
 
-    const maxByEmployee = useMemo(
-        () => Math.max(1, ...(data?.by_employee.map((r) => r.count) ?? [1])),
-        [data]
-    );
-
     const handleExportCsv = () => {
         if (!data) return;
         const headers = ["Task ID", "Task", "Assigned To", "Priority", "Status", "Total Hours", "Allotted Hours", "Assigned Date", "Quality", "Rating"];
@@ -354,12 +349,7 @@ export default function Reports_Admin() {
                     changeLabel="Past due date, not completed"
                     changeType={(data?.summary.overdue ?? 0) > 0 ? "down" : "neutral"}
                 />
-                <StatCard
-                    label="Total Hours Logged"
-                    value={data?.summary.total_hours ?? 0}
-                    changeLabel="Across matching tasks"
-                    changeType="neutral"
-                />
+               
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
@@ -404,46 +394,6 @@ export default function Reports_Admin() {
                 <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: "auto" }}>
                     {data?.tasks.length ?? 0} tasks in this report
                 </span>
-            </div>
-
-            {/* ── Breakdown cards ── */}
-            <div className="db-grid-2">
-                <div className="db-chart-card">
-                    <div className="db-card-title" style={{ marginBottom: 12 }}>Tasks by Employee</div>
-                    {(data?.by_employee ?? []).map((row) => (
-                        <div key={row.assigned_to__name} className="db-progress-row">
-                            <div className="db-progress-top">
-                                <span className="db-progress-label">{row.assigned_to__name}</span>
-                                <span className="db-progress-value">{row.count} · {row.hours ?? 0}h</span>
-                            </div>
-                            <div className="db-progress-bar">
-                                <div className="db-progress-fill" style={{ width: `${(row.count / maxByEmployee) * 100}%` }} />
-                            </div>
-                        </div>
-                    ))}
-                    {(!data || data.by_employee.length === 0) && (
-                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No data for this filter.</span>
-                    )}
-                </div>
-
-                <div className="db-chart-card">
-                    <div className="db-card-title" style={{ marginBottom: 12 }}>Tasks by Status</div>
-                    <div className="db-legend" style={{ marginTop: 0 }}>
-                        {(data?.by_status ?? []).map((row) => (
-                            <div key={row.task_status}>
-                                <StatusTag status={row.task_status} />
-                                <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: "var(--text-secondary)" }}>
-                                    {row.count}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                    {data?.summary.avg_rating != null && (
-                        <div style={{ marginTop: 16, fontSize: 12, color: "var(--text-secondary)" }}>
-                            Average rating across reviewed tasks: <b style={{ color: "var(--text-primary)" }}>{data.summary.avg_rating}/5</b>
-                        </div>
-                    )}
-                </div>
             </div>
 
             {/* ── Task table ── */}
