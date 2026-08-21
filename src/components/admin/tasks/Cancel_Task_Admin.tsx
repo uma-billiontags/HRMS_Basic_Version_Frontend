@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Table, Button, Input, Select, message, Popconfirm } from "antd";
-import { SearchOutlined, ReloadOutlined, InboxOutlined, StopOutlined, DeleteOutlined } from "@ant-design/icons";
+import { Table, Button, Input, Select, message } from "antd";
+import { SearchOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import dayjs from "dayjs";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -20,6 +19,7 @@ function authHeaders(): HeadersInit {
 interface CancelledTask {
     id: number;
     task_id: string;
+    project_name: string | null;
     task_name: string;
     task_details: string;
     department_name: string | null;
@@ -30,6 +30,7 @@ interface CancelledTask {
     allotted_time: number | null;
     assigned_date: string;
     last_activity: string | null;
+    cancel_reason: string | null;   // ← reason entered in the "Cancel Task" modal
 }
 
 // ── Same palette used on Active_Task_Admin's PriorityTag ──
@@ -89,7 +90,6 @@ export default function Cancel_Task_Admin() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [priorityFilter, setPriorityFilter] = useState<string | undefined>(undefined);
-    const [busyId, setBusyId] = useState<number | null>(null);
 
     const fetchCancelled = useCallback(() => {
         setLoading(true);
@@ -120,47 +120,17 @@ export default function Cancel_Task_Admin() {
 
     const totalCancelled = tasks.length;
 
-    async function handleArchive(task: CancelledTask) {
-        setBusyId(task.id);
-        try {
-            const res = await fetch(`${BASE_URL}/api/tasks/${task.id}/archive/`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...authHeaders() },
-            });
-            if (res.ok) {
-                message.success("Task archived");
-            } else {
-                const err = await res.json().catch(() => ({}));
-                message.error(err.detail || "Failed to archive task");
-            }
-        } catch {
-            message.error("Network error");
-        } finally {
-            setBusyId(null);
-            fetchCancelled();
-        }
+    function formatAllottedTime(hours: number | null): string {
+        if (hours === null || hours === undefined) return "—";
+        const totalMinutes = Math.round(hours * 60);
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+
+        if (h && m) return `${h}h ${m}m`;
+        if (h) return `${h}h`;
+        return `${m}m`;
     }
 
-    async function handleDelete(task: CancelledTask) {
-        setBusyId(task.id);
-        try {
-            const res = await fetch(`${BASE_URL}/api/tasks/${task.id}/delete/`, {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json", ...authHeaders() },
-            });
-            if (res.ok) {
-                message.success(`${task.task_id} deleted`);
-                setTasks((prev) => prev.filter((t) => t.id !== task.id));
-            } else {
-                const err = await res.json().catch(() => ({}));
-                message.error(err.detail || "Failed to delete task");
-            }
-        } catch {
-            message.error("Network error");
-        } finally {
-            setBusyId(null);
-        }
-    }
     const columns: ColumnsType<CancelledTask> = [
         {
             title: "Task ID",
@@ -177,9 +147,20 @@ export default function Cancel_Task_Admin() {
             ),
         },
         {
+            title: "Project Name",
+            dataIndex: "project_name",
+            key: "project_name",
+            width: 120,
+            render: (v: string) => (
+                v
+                    ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
+                    : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+            ),
+        },
+        {
             title: "Task",
             key: "task_name",
-            width: 220,
+            width: 160,
             render: (_: any, record: CancelledTask) => (
                 <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
@@ -227,7 +208,7 @@ export default function Cancel_Task_Admin() {
             title: "Assigned By",
             dataIndex: "assigned_by_name",
             key: "assigned_by_name",
-            width: 110,
+            width: 120,
             render: (v: string | null) => (
                 <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{v ?? "—"}</span>
             ),
@@ -239,33 +220,53 @@ export default function Cancel_Task_Admin() {
             width: 100,
             render: (v: string | null) => <PriorityTag priority={v} />,
         },
+
         {
-            title: "Time Logged Before Cancel (hrs)",
-            dataIndex: "total_time_taken",
-            key: "total_time_taken",
-            width: 150,
-            render: (v: number) => <span className="td-num" style={{ fontSize: 12 }}>{v}</span>,
-        },
-        {
-            title: "Assigned Date",
-            dataIndex: "assigned_date",
-            key: "assigned_date",
-            width: 120,
-            render: (v: string) => (
-                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                    {dayjs(v).format("DD MMM YYYY")}
-                </span>
+            title: "Allotted Time",
+            dataIndex: "allotted_time",
+            key: "allotted_time",
+            width: 110,
+            render: (v: number | null) => (
+                <span className="td-num" style={{ fontSize: 12 }}>{formatAllottedTime(v)}</span>
             ),
         },
+
         {
-            title: "Cancelled On",
-            dataIndex: "last_activity",
-            key: "last_activity",
-            width: 140,
+            title: "Time Taken",
+            key: "time",
+            width: 110,
+            render: (_: any, record: CancelledTask) => {
+                const isOver =
+                    record.allotted_time != null && record.total_time_taken > record.allotted_time;
+                return (
+                    <span
+                        className="td-num"
+                        style={{
+                            fontSize: 12,
+                            color: isOver ? "var(--red)" : undefined,
+                            fontWeight: isOver ? 700 : undefined,
+                        }}
+                    >
+                        {formatAllottedTime(record.total_time_taken)}
+                    </span>
+                );
+            },
+        },
+        {
+            title: "Cancellation Reason",
+            dataIndex: "cancel_reason",
+            key: "cancel_reason",
+            width: 220,
             render: (v: string | null) => (
-                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                    {v ? dayjs(v).format("DD MMM YYYY, HH:mm") : "—"}
-                </span>
+                <div
+                    style={{
+                        fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 220,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}
+                    title={v ?? undefined}
+                >
+                    {v || "—"}
+                </div>
             ),
         },
         {
@@ -274,42 +275,6 @@ export default function Cancel_Task_Admin() {
             width: 110,
             render: () => <CancelledStatusTag />,
         },
-        {
-            title: "Actions",
-            key: "actions",
-            width: 170,
-            fixed: "right",
-            render: (_: any, record: CancelledTask) => (
-                <div style={{ display: "flex", gap: 6 }}>
-                    <Button
-                        size="small"
-                        loading={busyId === record.id}
-                        icon={<InboxOutlined />}
-                        onClick={() => handleArchive(record)}
-                        className="db-action-btn"
-                    >
-                        Archive
-                    </Button>
-                    <Popconfirm
-                        title="Delete this task?"
-                        description="This permanently removes the task and its history. This can't be undone."
-                        okText="Delete"
-                        okButtonProps={{ danger: true }}
-                        onConfirm={() => handleDelete(record)}
-                    >
-                        <Button
-                            size="small"
-                            danger
-                            loading={busyId === record.id}
-                            icon={<DeleteOutlined />}
-                            style={{ fontSize: 11, fontWeight: 600, paddingInline: 10, color: "var(--red)", borderColor: "var(--red)", background: "var(--red-bg)", borderRadius: 6, border: "1px solid var(--red)" }}
-                        >
-                            Delete
-                        </Button>
-                    </Popconfirm>
-                </div>
-            ),
-        }
     ];
 
     return (
@@ -391,7 +356,7 @@ export default function Cancel_Task_Admin() {
                     columns={columns}
                     dataSource={filtered}
                     rowKey="id"
-                    scroll={{ x: 1400 }}
+                    scroll={{ x: 1620 }}
                     loading={loading}
                     pagination={{
                         pageSize: 10,

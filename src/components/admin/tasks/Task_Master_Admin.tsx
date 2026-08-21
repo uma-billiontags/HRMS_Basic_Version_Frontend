@@ -6,8 +6,6 @@ import BulkUploadTaskMasterModal from "./BulkUploadTaskMasterModal";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
-// Same auth pattern as Active_Task_Admin.tsx — this module uses Token auth,
-// not the ngrok header the bank-details screen uses.
 function authHeaders(): HeadersInit {
     try {
         const raw = localStorage.getItem("task_tracker_auth");
@@ -21,6 +19,7 @@ function authHeaders(): HeadersInit {
 
 interface TaskMaster {
     id: number;
+    project_name: string;
     task_name: string;
     default_hours: number;
     is_active: boolean;
@@ -31,13 +30,11 @@ export default function Task_Master_Admin() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
 
-    // ── Single Add / Edit — unchanged, own inline modal ─────────────────
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState<TaskMaster | null>(null);
     const [saving, setSaving] = useState(false);
     const [form] = Form.useForm();
 
-    // ── Bulk Upload — separate button, separate modal ───────────────────
     const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
     const fetchData = useCallback(() => {
@@ -96,6 +93,7 @@ export default function Task_Master_Admin() {
                 method: isEdit ? "PATCH" : "POST",
                 headers: { "Content-Type": "application/json", ...authHeaders() },
                 body: JSON.stringify({
+                    project_name: values.project_name,
                     task_name: values.task_name,
                     default_hours,
                     is_active: values.is_active,
@@ -107,7 +105,9 @@ export default function Task_Master_Admin() {
                 fetchData();
             } else {
                 const err = await res.json().catch(() => ({}));
-                message.error(err.task_name?.[0] || err.default_hours?.[0] || err.detail || "Save failed");
+                message.error(
+                    err.project_name?.[0] || err.task_name?.[0] || err.default_hours?.[0] || err.detail || "Save failed"
+                );
             }
         } catch {
             message.error("Network error");
@@ -145,7 +145,8 @@ export default function Task_Master_Admin() {
 
     const filtered = data.filter((d) => {
         if (!search.trim()) return true;
-        return d.task_name.toLowerCase().includes(search.toLowerCase());
+        const q = search.toLowerCase();
+        return d.task_name.toLowerCase().includes(q) || d.project_name?.toLowerCase().includes(q);
     });
 
     function decimalToHM(dec: number) {
@@ -163,6 +164,16 @@ export default function Task_Master_Admin() {
     const MINUTE_OPTIONS = [0, 15, 30, 45].map((m) => ({ value: m, label: `${m} min` }));
 
     const columns: ColumnsType<TaskMaster> = [
+        {
+            title: "Project Name",
+            dataIndex: "project_name",
+            key: "project_name",
+            render: (v: string) => (
+                v
+                    ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
+                    : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+            ),
+        },
         {
             title: "Task Name",
             dataIndex: "task_name",
@@ -277,7 +288,7 @@ export default function Task_Master_Admin() {
 
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
                 <Input
-                    placeholder="Search task name…"
+                    placeholder="Search task or project name…"
                     prefix={<SearchOutlined />}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -316,7 +327,6 @@ export default function Task_Master_Admin() {
                 />
             </div>
 
-            {/* Single Add / Edit — unchanged */}
             <Modal
                 open={modalOpen}
                 onCancel={() => setModalOpen(false)}
@@ -329,6 +339,9 @@ export default function Task_Master_Admin() {
                 destroyOnClose
             >
                 <Form form={form} layout="vertical">
+                    <Form.Item label="Project Name" name="project_name" rules={[{ required: true, message: "Required" }]}>
+                        <Input placeholder="e.g. Q3 Marketing Campaign" />
+                    </Form.Item>
                     <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
                         <Input placeholder="e.g. Logo Creation" />
                     </Form.Item>
@@ -346,7 +359,6 @@ export default function Task_Master_Admin() {
                 </Form>
             </Modal>
 
-            {/* Bulk Upload — its own button, its own modal */}
             <BulkUploadTaskMasterModal
                 open={bulkUploadOpen}
                 onClose={() => setBulkUploadOpen(false)}

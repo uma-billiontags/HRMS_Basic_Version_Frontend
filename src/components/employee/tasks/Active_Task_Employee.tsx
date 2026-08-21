@@ -1,22 +1,14 @@
-// User_Tasks.tsx
-// Employee dashboard — by default shows only the logged-in employee's OWN
-// tasks (via /api/tasks/my_tasks/). The "All Employees" scope still exists
-// in the component for reuse elsewhere, but the plain employee route hides
-// it and defaults to "mine" so employees never see other people's tasks.
-//
-// Reused for the TL "My Task" screen via props: forceScope="mine" locks the
-// table to the logged-in user's own tasks (self-assigned, whether by an
-// Admin, a TL, or the TL themself), hideScopeToggle hides the All/Mine
-// picker since there's nothing to toggle, and pageTitle swaps the heading.
-
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Table, Button, Input, Modal, Form, Tooltip, Select, message, Tag } from "antd";
+import { Table, Button, Input, Modal, Form, Tooltip, Select, message, Tag, Image } from "antd";
 import {
     SearchOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined,
     CheckCircleOutlined, LinkOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
+import { Upload } from "antd";
+import { UploadOutlined } from "@ant-design/icons";
+import type { UploadFile } from "antd";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -38,8 +30,10 @@ type TaskStatus =
 interface MyTask {
     id: number;
     task_id: string;
+    project_name: string | null;
     task_name: string;
     task_details: string;
+    department_name: string | null;
     assigned_to: number | null;
     assigned_to_name: string | null;
     assigned_by_name: string | null;
@@ -59,6 +53,7 @@ interface MyTask {
     reviewed_date: string | null;
     rework_count: number;
     has_active_session: boolean;
+    attachments: { id: number; file: string; uploaded_at: string }[];
 }
 
 interface Active_Task_EmployeeProps {
@@ -88,6 +83,20 @@ const PRIORITY_COLOR: Record<string, { color: string; bg: string }> = {
     urgent: { color: "var(--red)", bg: "var(--red-bg)" },
 };
 
+const PRIORITY_OPTIONS = [
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+    { value: "urgent", label: "Urgent" },
+];
+
+
+
+// Terminal states — days-to-go and rework/etc don't apply once work is over.
+// (completed tasks never actually reach this page anymore, but keeping it
+// here is harmless and keeps the component correct if scope is ever "all".)
+const TERMINAL_STATUSES: TaskStatus[] = ["completed", "cancelled"];
+
 function StatusTag({ status }: { status: TaskStatus }) {
     const meta = STATUS_META[status] ?? STATUS_META.not_started;
     return (
@@ -113,6 +122,43 @@ function PriorityTag({ priority }: { priority: string | null }) {
     );
 }
 
+// ── Days-to-go badge. Positive = time left, 0 = due today, negative = overdue.
+function DaysToGoTag({ dueDate, status }: { dueDate: string | null; status: TaskStatus }) {
+    if (!dueDate || TERMINAL_STATUSES.includes(status)) {
+        return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>;
+    }
+    const days = dayjs(dueDate).startOf("day").diff(dayjs().startOf("day"), "day");
+
+    if (days < 0) {
+        return (
+            <span style={{
+                fontSize: 11, fontWeight: 700, color: "var(--red)", background: "var(--red-bg)",
+                border: "1px solid var(--red)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
+            }}>
+                Overdue by {Math.abs(days)} {Math.abs(days) === 1 ? "day" : "days"}
+            </span>
+        );
+    }
+    if (days === 0) {
+        return (
+            <span style={{
+                fontSize: 11, fontWeight: 700, color: "var(--amber)", background: "var(--amber-bg)",
+                border: "1px solid var(--amber)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
+            }}>
+                Due today
+            </span>
+        );
+    }
+    return (
+        <span style={{
+            fontSize: 11, fontWeight: 700, color: "var(--green)", background: "var(--green-bg)",
+            border: "1px solid var(--green)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
+        }}>
+            {days} {days === 1 ? "day" : "days"} to go
+        </span>
+    );
+}
+
 function StatCard({ label, value }: { label: string; value: number | string }) {
     return (
         <div className="db-stat-card">
@@ -134,20 +180,19 @@ export default function Active_Task_Employee({
     const [search, setSearch] = useState("");
     const [busyTaskId, setBusyTaskId] = useState<number | null>(null);
 
-    // ── The logged-in employee's own id — still used for thea "You" tag and
+    // ── The logged-in employee's own id — still used for the "You" tag and
     // any leftover ownership checks. Fetched once from /api/auth/me/.
     const [myId, setMyId] = useState<number | null>(null);
     const [myIdLoading, setMyIdLoading] = useState(true);
 
     // ── Defaults to "mine" now — this page only ever shows the employee's
-    // own tasks unless a caller explicitly opts into "all" (there's
-    // currently no route that does, but the option stays available).
+    // own tasks unless a caller explicitly opts into "all".
     const [scopeFilter, _setScopeFilter] = useState<ScopeFilter>(forceScope ?? "mine");
     const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+    const [priorityFilter, setPriorityFilter] = useState<string | undefined>(undefined);
 
     // Whether the employee has ANY active session right now (across all tasks) —
-    // used to disable "Start" on every other task of THEIRS, per the
-    // flowchart's "Is another task timer active?" guard.
+    // used to disable "Start" on every other task of THEIRS.
     const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
 
     // Submit modal
@@ -155,6 +200,8 @@ export default function Active_Task_Employee({
     const [submitTarget, setSubmitTarget] = useState<MyTask | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [submitForm] = Form.useForm();
+
+    const [attachments, setAttachments] = useState<UploadFile[]>([]);
 
     const fetchMe = useCallback(() => {
         setMyIdLoading(true);
@@ -167,16 +214,17 @@ export default function Active_Task_Employee({
 
     const fetchTasks = useCallback(() => {
         setLoading(true);
-        // "mine" -> server-scoped endpoint, so employees never even receive
-        // other people's task data over the wire. "all" -> full list (only
-        // reachable if a future caller explicitly sets scope to "all").
         const endpoint = scopeFilter === "mine"
             ? `${BASE_URL}/api/tasks/my_tasks/`
             : `${BASE_URL}/api/tasks/get_all_tasks/`;
 
         fetch(endpoint, { headers: { ...authHeaders() } })
             .then((r) => r.json())
-            .then((d) => setTasks(Array.isArray(d) ? d : d.results || []))
+            .then((d) => {
+                const all: MyTask[] = Array.isArray(d) ? d : d.results || [];
+                // Completed tasks live on Completed_Tasks_Employee now — never show them here.
+                setTasks(all.filter((t) => t.task_status !== "completed"));
+            })
             .catch(() => message.error("Failed to load tasks"))
             .finally(() => setLoading(false));
     }, [scopeFilter]);
@@ -188,15 +236,20 @@ export default function Active_Task_Employee({
             .catch(() => setActiveTaskId(null));
     }, []);
 
+    function isValidHttpUrl(str: string): boolean {
+        try {
+            const url = new URL(str.trim());
+            return url.protocol === "http:" || url.protocol === "https:";
+        } catch {
+            return false;
+        }
+    }
     useEffect(() => {
         fetchMe();
         fetchTasks();
         fetchActiveSession();
     }, [fetchMe, fetchTasks, fetchActiveSession]);
 
-    // ── Ownership check — still correct even now that the table is
-    // server-scoped to "mine": every row IS the employee's own task in
-    // that mode, so this just naturally evaluates true for all of them.
     const isMine = useCallback(
         (task: MyTask) => myId !== null && task.assigned_to === myId,
         [myId]
@@ -205,23 +258,24 @@ export default function Active_Task_Employee({
     const filtered = useMemo(() => {
         return tasks.filter((t) => {
             if (statusFilter && t.task_status !== statusFilter) return false;
+            if (priorityFilter && t.priority !== priorityFilter) return false;
             if (search.trim()) {
                 const q = search.toLowerCase();
-                const haystack = [t.task_id, t.task_name, t.task_details, t.assigned_to_name];
+                const haystack = [t.task_id, t.project_name, t.task_name, t.task_details, t.assigned_to_name];
                 if (!haystack.some((f) => f?.toLowerCase().includes(q))) return false;
             }
             return true;
         });
-    }, [tasks, search, statusFilter]);
+    }, [tasks, search, statusFilter, priorityFilter]);
 
-    // ── Stats always reflect the employee's OWN tasks. When scope is
-    // "mine" this is just `tasks` itself; kept as a derived filter so it
-    // stays correct even if scope is ever switched to "all".
     const myTasks = useMemo(() => tasks.filter(isMine), [tasks, isMine]);
     const totalTasks = myTasks.length;
     const inProgress = myTasks.filter((t) => t.task_status === "in_progress").length;
-    const completed = myTasks.filter((t) => t.task_status === "completed").length;
     const reworkNeeded = myTasks.filter((t) => t.task_status === "rework_needed").length;
+    const overdueCount = myTasks.filter((t) => {
+        if (!t.due_date || TERMINAL_STATUSES.includes(t.task_status)) return false;
+        return dayjs(t.due_date).startOf("day").isBefore(dayjs().startOf("day"));
+    }).length;
 
     // ── Timer actions ────────────────────────────────────────────────────────
     async function callTimerAction(task: MyTask, action: "start" | "pause" | "resume") {
@@ -251,6 +305,7 @@ export default function Active_Task_Employee({
             task_sheet_link: task.task_sheet_link || "",
             employee_remarks: task.employee_remarks || "",
         });
+        setAttachments([]);
         setSubmitOpen(true);
     };
 
@@ -263,19 +318,24 @@ export default function Active_Task_Employee({
             return;
         }
 
+        const formData = new FormData();
+        formData.append("task_sheet_link", values.task_sheet_link.trim());
+        formData.append("employee_remarks", values.employee_remarks || "");
+        attachments.forEach((f) => {
+            if (f.originFileObj) formData.append("attachments", f.originFileObj);
+        });
+
         setSubmitting(true);
         try {
             const res = await fetch(`${BASE_URL}/api/tasks/${submitTarget.id}/submit/`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", ...authHeaders() },
-                body: JSON.stringify({
-                    task_sheet_link: values.task_sheet_link,
-                    employee_remarks: values.employee_remarks || "",
-                }),
+                headers: { ...authHeaders() },
+                body: formData,
             });
             if (res.ok) {
                 message.success("Task submitted");
                 setSubmitOpen(false);
+                setAttachments([]);
             } else {
                 const err = await res.json().catch(() => ({}));
                 message.error(JSON.stringify(err) || "Failed to submit task");
@@ -289,10 +349,6 @@ export default function Active_Task_Employee({
         }
     };
 
-    // ── Timer action buttons for a row — only rendered with real controls
-    // when the task belongs to the logged-in employee. In "mine" scope
-    // (the default here) this is always true; kept as a guard in case the
-    // component is ever reused in "all" scope elsewhere.
     function TimerActions({ task }: { task: MyTask }) {
         if (!isMine(task)) {
             return <span style={{ fontSize: 11, color: "var(--text-muted)" }}>View only</span>;
@@ -361,15 +417,46 @@ export default function Active_Task_Employee({
                 </div>
             );
         }
-        // submitted / under_review / resubmitted / completed / on_hold / cancelled / archived
+        // submitted / under_review / resubmitted / on_hold / cancelled / archived
         return <span style={{ fontSize: 11, color: "var(--text-muted)" }}>No action</span>;
     }
 
-    // ── Full Excel-style column set ──────────────────────────────────────────
+    function resolveFileUrl(path: string): string {
+        if (/^https?:\/\//i.test(path)) return path;  // already absolute
+        return `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+    }
+
+    function formatAllottedTime(hours: number | null): string {
+        if (hours === null || hours === undefined) return "—";
+        const totalMinutes = Math.round(hours * 60);
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+
+        if (h && m) return `${h}h ${m}m`;
+        if (h) return `${h}h`;
+        return `${m}m`;
+    }
+
     const columns: ColumnsType<MyTask> = [
         {
-            title: "Task ID", dataIndex: "task_id", key: "task_id", width: 95, fixed: "left",
-            render: (v: string) => <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)", border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", }}>{v}</span>,
+            title: "Task ID",
+            dataIndex: "task_id",
+            key: "task_id",
+            width: 100,
+            render: (v: string) => (
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)", border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", }}>{v}</span>
+            ),
+        },
+        {
+            title: "Project Name",
+            dataIndex: "project_name",
+            key: "project_name",
+            width: 120,
+            render: (v: string | null) => (
+                v
+                    ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
+                    : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+            ),
         },
         {
             title: "Task Name", dataIndex: "task_name", key: "task_name", width: 180, fixed: "left",
@@ -387,8 +474,22 @@ export default function Active_Task_Employee({
             ),
         },
         {
-            // "You" tag stays for clarity, and is also correct if this
-            // component is ever rendered in "all" scope elsewhere.
+            title: "Department",
+            dataIndex: "department_name",
+            key: "department_name",
+            width: 130,
+            render: (v: string | null) => (
+                v ? (
+                    <span style={{
+                        fontSize: 11, fontWeight: 600, color: "var(--amber)", background: "var(--amber-bg)",
+                        border: "1px solid var(--amber)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
+                    }}>
+                        {v}
+                    </span>
+                ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+            ),
+        },
+        {
             title: "Assigned To", dataIndex: "assigned_to_name", key: "assigned_to_name", width: 150,
             render: (v: string | null, record: MyTask) => (
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -402,12 +503,76 @@ export default function Active_Task_Employee({
             ),
         },
         {
-            title: "Assigned By", dataIndex: "assigned_by_name", key: "assigned_by_name", width: 110,
-            render: (v: string | null) => <span style={{ fontSize: 12 }}>{v ?? "—"}</span>,
+            title: "Assigned By",
+            dataIndex: "assigned_by_name",
+            key: "assigned_by_name",
+            width: 120,
+            render: (v: string | null) => (
+                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{v ?? "—"}</span>
+            ),
         },
         {
-            title: "Priority", dataIndex: "priority", key: "priority", width: 95,
+            title: "Priority",
+            dataIndex: "priority",
+            key: "priority",
+            width: 100,
             render: (v: string | null) => <PriorityTag priority={v} />,
+        },
+        {
+            title: "Status",
+            dataIndex: "task_status",
+            key: "task_status",
+            width: 130,
+            render: (v: TaskStatus) => <StatusTag status={v} />,
+        },
+        {
+            title: "Allotted Time",
+            dataIndex: "allotted_time",
+            key: "allotted_time",
+            width: 110,
+            render: (v: number | null) => (
+                <span className="td-num" style={{ fontSize: 12 }}>{formatAllottedTime(v)}</span>
+            ),
+        },
+        {
+            title: "Time Taken",
+            key: "time",
+            width: 110,
+            render: (_: any, record: MyTask) => {
+                const isOver =
+                    record.allotted_time != null && record.total_time_taken > record.allotted_time;
+                return (
+                    <span
+                        className="td-num"
+                        style={{
+                            fontSize: 12,
+                            color: isOver ? "var(--red)" : undefined,
+                            fontWeight: isOver ? 700 : undefined,
+                        }}
+                    >
+                        {formatAllottedTime(record.total_time_taken)}
+                    </span>
+                );
+            },
+        },
+        {
+            title: "Remaining/Over Time",
+            dataIndex: "remaining_or_over_time",
+            key: "remaining_or_over_time",
+            width: 130,
+            render: (v: number) => (
+                <span className={v < 0 ? "td-down" : "td-up"} style={{ fontSize: 12 }}>
+                    {v < 0 ? `${formatAllottedTime(Math.abs(v))} over` : formatAllottedTime(v)}
+                </span>
+            ),
+        },
+        {
+            title: "Days To Go",
+            key: "days_to_go",
+            width: 150,
+            render: (_: any, record: MyTask) => (
+                <DaysToGoTag dueDate={record.due_date} status={record.task_status} />
+            ),
         },
         {
             title: "Assigned Date", dataIndex: "assigned_date", key: "assigned_date", width: 110,
@@ -422,26 +587,6 @@ export default function Active_Task_Employee({
             ),
         },
         {
-            title: "Allotted (hrs)", dataIndex: "allotted_time", key: "allotted_time", width: 100,
-            render: (v: number | null) => <span className="td-num" style={{ fontSize: 12 }}>{v ?? "—"}</span>,
-        },
-        {
-            title: "Status", dataIndex: "task_status", key: "task_status", width: 125,
-            render: (v: TaskStatus) => <StatusTag status={v} />,
-        },
-        {
-            title: "Total Time (hrs)", dataIndex: "total_time_taken", key: "total_time_taken", width: 115,
-            render: (v: number) => <span className="td-num" style={{ fontSize: 12 }}>{v}</span>,
-        },
-        {
-            title: "Remaining/Over (hrs)", dataIndex: "remaining_or_over_time", key: "remaining_or_over_time", width: 130,
-            render: (v: number) => (
-                <span className={v < 0 ? "td-down" : "td-up"} style={{ fontSize: 12 }}>
-                    {v < 0 ? `+${Math.abs(v)} over` : v}
-                </span>
-            ),
-        },
-        {
             title: "Task Sheet Link", dataIndex: "task_sheet_link", key: "task_sheet_link", width: 140,
             render: (v: string) => v ? (
                 <a href={v} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, display: "flex", alignItems: "center", gap: 4 }}>
@@ -450,12 +595,26 @@ export default function Active_Task_Employee({
             ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
         },
         {
-            title: "Quality", dataIndex: "quality_of_task", key: "quality_of_task", width: 110,
-            render: (v: string) => <span style={{ fontSize: 11.5, textTransform: "capitalize" }}>{v ? v.replace(/_/g, " ") : "—"}</span>,
-        },
-        {
-            title: "Rating", dataIndex: "rating", key: "rating", width: 80,
-            render: (v: number | null) => <span style={{ fontSize: 12 }}>{v ? `${v}/5` : "—"}</span>,
+            title: "Attachments",
+            dataIndex: "attachments",
+            key: "attachments",
+            width: 200,
+            render: (files: MyTask["attachments"]) =>
+                files?.length ? (
+                    <Image.PreviewGroup>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 180 }}>
+                            {files.map((f) => (
+                                <Image
+                                    key={f.id}
+                                    src={resolveFileUrl(f.file)}
+                                    width={28}
+                                    height={28}
+                                    style={{ objectFit: "cover", borderRadius: 4, border: "1px solid var(--border)" }}
+                                />
+                            ))}
+                        </div>
+                    </Image.PreviewGroup>
+                ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
         },
         {
             title: "Employee Remarks", dataIndex: "employee_remarks", key: "employee_remarks", width: 160,
@@ -513,10 +672,10 @@ export default function Active_Task_Employee({
             </div>
 
             <div className="db-stat-grid">
-                <StatCard label="My Total Tasks" value={totalTasks} />
-                <StatCard label="My In Progress" value={inProgress} />
-                <StatCard label="My Completed" value={completed} />
-                <StatCard label="My Rework Needed" value={reworkNeeded} />
+                <StatCard label="Total Tasks" value={totalTasks} />
+                <StatCard label="In Progress" value={inProgress} />
+                <StatCard label="Rework Needed" value={reworkNeeded} />
+                <StatCard label="Overdue" value={overdueCount} />
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
@@ -532,14 +691,23 @@ export default function Active_Task_Employee({
                         borderRadius: 9, fontSize: 13,
                     }}
                 />
-
                 <Select
                     placeholder="Status"
                     allowClear
                     value={statusFilter}
                     onChange={setStatusFilter}
                     style={{ width: 170 }}
-                    options={Object.entries(STATUS_META).map(([value, meta]) => ({ value, label: meta.label }))}
+                    options={Object.entries(STATUS_META)
+                        .filter(([value]) => value !== "completed")
+                        .map(([value, meta]) => ({ value, label: meta.label }))}
+                />
+                <Select
+                    placeholder="Priority"
+                    allowClear
+                    value={priorityFilter}
+                    onChange={setPriorityFilter}
+                    style={{ width: 150 }}
+                    options={PRIORITY_OPTIONS}
                 />
                 <Button
                     onClick={() => { fetchTasks(); fetchActiveSession(); }}
@@ -562,7 +730,7 @@ export default function Active_Task_Employee({
                     columns={columns}
                     dataSource={filtered}
                     rowKey="id"
-                    scroll={{ x: 2500 }}
+                    scroll={{ x: 3800 }}
                     loading={loading || myIdLoading}
                     pagination={{
                         pageSize: 10, showSizeChanger: true, pageSizeOptions: ["10", "20", "50"],
@@ -590,12 +758,41 @@ export default function Active_Task_Employee({
                         <Form.Item
                             label="Task Sheet Link"
                             name="task_sheet_link"
-                            rules={[{ required: true, message: "Required" }]}
+                            rules={[
+                                { required: true, message: "Please enter your task sheet link" },
+                                {
+                                    validator: (_, value) => {
+                                        if (!value || isValidHttpUrl(value)) return Promise.resolve();
+                                        return Promise.reject(
+                                            new Error("Enter a valid link starting with http:// or https://")
+                                        );
+                                    },
+                                },
+                            ]}
                         >
-                            <Input placeholder="Paste your work link here" />
+                            <Input placeholder="https://docs.google.com/..." />
                         </Form.Item>
+
                         <Form.Item label="Remarks" name="employee_remarks">
                             <Input.TextArea rows={3} placeholder="Anything the reviewer should know…" />
+                        </Form.Item>
+
+                        <Form.Item label="Attachments (optional)">
+                            <Upload
+                                multiple
+                                listType="picture-card"
+                                accept="image/*"
+                                fileList={attachments}
+                                beforeUpload={() => false}   // stop antd auto-uploading; we send it ourselves
+                                onChange={({ fileList }) => setAttachments(fileList)}
+                            >
+                                {attachments.length >= 8 ? null : (
+                                    <div>
+                                        <UploadOutlined />
+                                        <div style={{ marginTop: 2, fontSize: 11 }}>Upload</div>
+                                    </div>
+                                )}
+                            </Upload>
                         </Form.Item>
                     </Form>
                 )}

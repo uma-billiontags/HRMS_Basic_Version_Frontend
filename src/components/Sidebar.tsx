@@ -1,16 +1,3 @@
-// Sidebar.tsx
-// One reusable sidebar for admin, employee, and TL. Pass role="admin" or
-// role="employee", and for employees also pass isTL — TLs get their own
-// nav (My Task = self-assigned tasks, Team Tasks = tasks they created,
-// same as a plain employee otherwise) instead of the regular employee nav.
-//
-// isTL should come from /api/auth/me/'s `is_tl` field (see accounts/views.py
-// me_view) — fetch it once in AuthContext right after login and pass it
-// down here, rather than re-fetching per-page.
-//
-// Usage:
-//   <Sidebar role={user.role} userName={user.name} isTL={user.isTL} />
-
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
     LayoutDashboard,
@@ -19,7 +6,6 @@ import {
     CheckCircle2,
     // CheckCircle,
     XCircle,
-    Archive,
     // Clock,
     History,
     BarChart3,
@@ -27,6 +13,8 @@ import {
     ListChecks,
     UsersRound,
     Repeat,
+    FolderOpen,
+    AlarmClock,
     type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "./AuthContext";
@@ -52,11 +40,13 @@ const ADMIN_NAV: NavGroup[] = [
     {
         section: "TASKS",
         items: [
-            { label: "Active Tasks", icon: ClipboardList, to: "/admin/active_tasks" },
-            { label: "Completed Tasks", icon: CheckCircle2, to: "/admin/completed_tasks" },
-            { label: "Archive Tasks", icon: Archive, to: "/admin/archive_tasks" },
-            { label: "Cancel Tasks", icon: XCircle, to: "/admin/cancel_tasks" },
+            { label: "All Tasks", icon: ClipboardList, to: "/admin/all_tasks" },
+            { label: "Open Tasks", icon: FolderOpen, to: "/admin/open_tasks" },
+            { label: "Overdue Tasks", icon: AlarmClock, to: "/admin/overdue_tasks" },
+            { label: "Rework Tasks", icon: ClipboardList, to: "/admin/rework_tasks" },
             { label: "Review Tasks", icon: ClipboardCheck, to: "/admin/review_tasks" },
+            { label: "Completed Tasks", icon: CheckCircle2, to: "/admin/completed_tasks" },
+            { label: "Cancel Tasks", icon: XCircle, to: "/admin/cancel_tasks" },
             { label: "Recurring Tasks", icon: Repeat, to: "/admin/recurring_tasks" },
         ],
     },
@@ -98,7 +88,8 @@ const EMPLOYEE_NAV: NavGroup[] = [
     {
         section: "TASKS",
         items: [
-        { label: "My Tasks", icon: ClipboardList, to: "/employee/active_tasks" },
+            { label: "My Tasks", icon: ClipboardList, to: "/employee/active_tasks" },
+            { label: "Completed Tasks", icon: CheckCircle2, to: "/employee/completed_tasks" },
         ],
 
     },
@@ -118,11 +109,6 @@ const EMPLOYEE_NAV: NavGroup[] = [
     },
 ];
 
-// ── TL nav — a hybrid of Admin (create/assign) and Employee (do the work).
-// "My Task" = tasks self-assigned by the TL (reuse Active_Task_Employee
-// with forceScope="mine"); "Team Tasks" = tasks the TL created, whether
-// handed to someone else or self-assigned (Active_Task_TL.tsx); "All Tasks"
-// keeps the full system-wide read-only view every employee already has.
 const TL_NAV: NavGroup[] = [
     { section: "OVERVIEW", items: [{ label: "Dashboard", icon: LayoutDashboard, to: "/employee/dashboard" }] },
     {
@@ -132,6 +118,8 @@ const TL_NAV: NavGroup[] = [
             { label: "Team Tasks", icon: UsersRound, to: "/employee/tl_tasks" },
             { label: "Review Tasks", icon: CheckCircle2, to: "/employee/tl_review_tasks" },
             { label: "Recurring Tasks", icon: Repeat, to: "/employee/recurring_tasks" },
+            { label: "Completed Tasks", icon: CheckCircle2, to: "/employee/completed_tasks" },
+
         ],
     },
     {

@@ -1,12 +1,6 @@
-// Completed_Task_Admin.tsx
-// Admin-only, read-only — every task with task_status === "completed".
-// No timer actions, no assign/hold/cancel — completed work is done. The one
-// action available is Archive, since that's the natural next step for a
-// finished task per your state-transition table.
-
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Table, Button, Input, Select, message } from "antd";
-import { SearchOutlined, ReloadOutlined, InboxOutlined, CheckCircleOutlined } from "@ant-design/icons";
+import { Table, Button, Input, Select, message, Image } from "antd";
+import { SearchOutlined, ReloadOutlined, CheckCircleOutlined, LinkOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 
@@ -23,21 +17,29 @@ function authHeaders(): HeadersInit {
     }
 }
 
+type TaskStatus = "submitted" | "resubmitted" | "completed";
+
 interface CompletedTask {
     id: number;
     task_id: string;
+    project_name: string | null;
     task_name: string;
     task_details: string;
     department_name: string | null;
     assigned_to_name: string | null;
+    assigned_by_name: string | null;
     priority: string | null;
     total_time_taken: number;
     allotted_time: number | null;
+    task_sheet_link: string;
+    employee_remarks: string;
     quality_of_task: string;
     rating: number | null;
     admin_remarks: string;
     reviewed_date: string | null;
     rework_count: number;
+    task_status: TaskStatus;
+    attachments: { id: number; file: string; uploaded_at: string }[];
 }
 
 // ── Quality outcome, styled like Active_Task_Admin's StatusTag ──
@@ -48,6 +50,26 @@ const QUALITY_META: Record<string, { label: string; color: string; bg: string }>
     rework_needed: { label: "Rework Needed", color: "var(--red)", bg: "var(--red-bg)" },
     rejected: { label: "Rejected", color: "var(--red)", bg: "var(--red-bg)" },
 };
+
+const STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string }> = {
+    submitted: { label: "Submitted", color: "var(--purple)", bg: "var(--purple-bg)" },
+    resubmitted: { label: "Resubmitted", color: "var(--amber)", bg: "var(--amber-bg)" },
+    completed: { label: "Completed", color: "var(--green)", bg: "var(--green-bg)" },
+};
+
+const PRIORITY_COLOR: Record<string, { color: string; bg: string }> = {
+    low: { color: "var(--green)", bg: "var(--green-bg)" },
+    medium: { color: "var(--blue)", bg: "var(--blue-bg)" },
+    high: { color: "var(--amber)", bg: "var(--amber-bg)" },
+    urgent: { color: "var(--red)", bg: "var(--red-bg)" },
+};
+
+const PRIORITY_OPTIONS = [
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+    { value: "urgent", label: "Urgent" },
+];
 
 function QualityTag({ quality }: { quality: string }) {
     if (!quality) return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>N/A</span>;
@@ -90,7 +112,7 @@ export default function Completed_Task_Admin() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [qualityFilter, setQualityFilter] = useState<string | undefined>(undefined);
-    const [busyId, setBusyId] = useState<number | null>(null);
+    const [priorityFilter, setPriorityFilter] = useState<string | undefined>(undefined);
 
     const fetchCompleted = useCallback(() => {
         setLoading(true);
@@ -111,40 +133,59 @@ export default function Completed_Task_Admin() {
     const filtered = useMemo(() => {
         return tasks.filter((t) => {
             if (qualityFilter && t.quality_of_task !== qualityFilter) return false;
+            if (priorityFilter && t.priority !== priorityFilter) return false;
             if (search.trim()) {
                 const q = search.toLowerCase();
                 if (![t.task_id, t.task_name, t.assigned_to_name, t.department_name].some((f) => f?.toLowerCase().includes(q))) return false;
             }
             return true;
         });
-    }, [tasks, search, qualityFilter]);
+    }, [tasks, search, qualityFilter, priorityFilter]);
 
     const totalCompleted = tasks.length;
     const excellentCount = tasks.filter((t) => t.quality_of_task === "excellent").length;
-    const avgRating = tasks.length
-        ? (tasks.reduce((sum, t) => sum + (t.rating || 0), 0) / tasks.filter((t) => t.rating).length || 0).toFixed(1)
-        : "0";
-    const reworkedCount = tasks.filter((t) => t.rework_count > 0).length;
+    const goodCount = tasks.filter((t) => t.quality_of_task === "good").length;
+    const rejectedCount = tasks.filter((t) => t.quality_of_task === "rejected").length;
 
-    async function handleArchive(task: CompletedTask) {
-        setBusyId(task.id);
-        try {
-            const res = await fetch(`${BASE_URL}/api/tasks/${task.id}/archive/`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...authHeaders() },
-            });
-            if (res.ok) {
-                message.success("Task archived");
-            } else {
-                const err = await res.json().catch(() => ({}));
-                message.error(err.detail || "Failed to archive task");
-            }
-        } catch {
-            message.error("Network error");
-        } finally {
-            setBusyId(null);
-            fetchCompleted();
-        }
+    function resolveFileUrl(path: string): string {
+        if (/^https?:\/\//i.test(path)) return path;  // already absolute
+        return `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+    }
+
+    function formatAllottedTime(hours: number | null): string {
+        if (hours === null || hours === undefined) return "—";
+        const totalMinutes = Math.round(hours * 60);
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+
+        if (h && m) return `${h}h ${m}m`;
+        if (h) return `${h}h`;
+        return `${m}m`;
+    }
+
+    function StatusTag({ status }: { status: TaskStatus }) {
+        const meta = STATUS_META[status];
+        return (
+            <span style={{
+                fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 10,
+                color: meta.color, background: meta.bg, whiteSpace: "nowrap",
+            }}>
+                {meta.label}
+            </span>
+        );
+    }
+
+    function PriorityTag({ priority }: { priority: string | null }) {
+        if (!priority) return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>;
+        const meta = PRIORITY_COLOR[priority] ?? { color: "var(--text-secondary)", bg: "var(--bg-input)" };
+        return (
+            <span style={{
+                fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 10,
+                color: meta.color, background: meta.bg, textTransform: "capitalize", whiteSpace: "nowrap",
+            }}>
+                {priority}
+            </span>
+        );
     }
 
     const columns: ColumnsType<CompletedTask> = [
@@ -163,9 +204,20 @@ export default function Completed_Task_Admin() {
             ),
         },
         {
+            title: "Project Name",
+            dataIndex: "project_name",
+            key: "project_name",
+            width: 120,
+            render: (v: string) => (
+                v
+                    ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
+                    : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+            ),
+        },
+        {
             title: "Task",
             key: "task_name",
-            width: 220,
+            width: 160,
             render: (_: any, record: CompletedTask) => (
                 <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
@@ -210,6 +262,29 @@ export default function Completed_Task_Admin() {
             ),
         },
         {
+            title: "Assigned By",
+            dataIndex: "assigned_by_name",
+            key: "assigned_by_name",
+            width: 120,
+            render: (v: string | null) => (
+                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{v ?? "—"}</span>
+            ),
+        },
+        {
+            title: "Priority",
+            dataIndex: "priority",
+            key: "priority",
+            width: 100,
+            render: (v: string | null) => <PriorityTag priority={v} />,
+        },
+        {
+            title: "Status",
+            dataIndex: "task_status",
+            key: "task_status",
+            width: 130,
+            render: (v: TaskStatus) => <StatusTag status={v} />,
+        },
+        {
             title: "Quality",
             dataIndex: "quality_of_task",
             key: "quality_of_task",
@@ -226,19 +301,80 @@ export default function Completed_Task_Admin() {
             ),
         },
         {
-            title: "Total Time (hrs)",
-            dataIndex: "total_time_taken",
-            key: "total_time_taken",
-            width: 120,
-            render: (v: number) => <span className="td-num" style={{ fontSize: 12 }}>{v}</span>,
-        },
-        {
-            title: "Allotted (hrs)",
+            title: "Allotted Time",
             dataIndex: "allotted_time",
             key: "allotted_time",
             width: 110,
             render: (v: number | null) => (
-                <span className="td-num" style={{ fontSize: 12 }}>{v ?? "—"}</span>
+                <span className="td-num" style={{ fontSize: 12 }}>{formatAllottedTime(v)}</span>
+            ),
+        },
+        {
+            title: "Time Taken",
+            key: "time",
+            width: 110,
+            render: (_: any, record: CompletedTask) => {
+                const isOver =
+                    record.allotted_time != null && record.total_time_taken > record.allotted_time;
+                return (
+                    <span
+                        className="td-num"
+                        style={{
+                            fontSize: 12,
+                            color: isOver ? "var(--red)" : undefined,
+                            fontWeight: isOver ? 700 : undefined,
+                        }}
+                    >
+                        {formatAllottedTime(record.total_time_taken)}
+                    </span>
+                );
+            },
+        },
+        {
+            title: "Task Sheet Link",
+            dataIndex: "task_sheet_link",
+            key: "task_sheet_link",
+            width: 140,
+            render: (v: string) => v ? (
+                <a href={v} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, display: "flex", alignItems: "center", gap: 4 }}>
+                    <LinkOutlined /> Open
+                </a>
+            ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
+        },
+        {
+            title: "Attachments",
+            dataIndex: "attachments",
+            key: "attachments",
+            width: 200,
+            render: (files: CompletedTask["attachments"]) =>
+                files?.length ? (
+                    <Image.PreviewGroup>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 180 }}>
+                            {files.map((f) => (
+                                <Image
+                                    key={f.id}
+                                    src={resolveFileUrl(f.file)}
+                                    width={28}
+                                    height={28}
+                                    style={{ objectFit: "cover", borderRadius: 4, border: "1px solid var(--border)" }}
+                                />
+                            ))}
+                        </div>
+                    </Image.PreviewGroup>
+                ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
+        },
+        {
+            title: "Employee Remarks",
+            dataIndex: "employee_remarks",
+            key: "employee_remarks",
+            width: 160,
+            render: (v: string) => (
+                <div style={{
+                    fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 160,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }} title={v}>
+                    {v || "—"}
+                </div>
             ),
         },
         {
@@ -276,23 +412,6 @@ export default function Completed_Task_Admin() {
                 </span>
             ),
         },
-        {
-            title: "Actions",
-            key: "actions",
-            width: 110,
-            fixed: "right",
-            render: (_: any, record: CompletedTask) => (
-                <Button
-                    size="small"
-                    loading={busyId === record.id}
-                    icon={<InboxOutlined />}
-                    onClick={() => handleArchive(record)}
-                    className="db-action-btn"
-                >
-                    Archive
-                </Button>
-            ),
-        },
     ];
 
     return (
@@ -326,22 +445,22 @@ export default function Completed_Task_Admin() {
                     changeType="neutral"
                 />
                 <StatCard
-                    label="Excellent Quality"
+                    label="Excellent"
                     value={excellentCount}
                     changeLabel="Rated excellent by admin"
                     changeType="up"
                 />
                 <StatCard
-                    label="Avg. Rating"
-                    value={`${avgRating}/5`}
-                    changeLabel="Across rated tasks"
-                    changeType="neutral"
+                    label="Good"
+                    value={goodCount}
+                    changeLabel="Rated good by admin"
+                    changeType="up"
                 />
                 <StatCard
-                    label="Had Rework"
-                    value={reworkedCount}
-                    changeLabel="Needed at least one rework"
-                    changeType={reworkedCount > 0 ? "down" : "neutral"}
+                    label="Rejected"
+                    value={rejectedCount}
+                    changeLabel="Rejected by admin"
+                    changeType={rejectedCount > 0 ? "down" : "neutral"}
                 />
             </div>
 
@@ -372,6 +491,14 @@ export default function Completed_Task_Admin() {
                         { value: "rejected", label: "Rejected" },
                     ]}
                 />
+                <Select
+                    placeholder="Priority"
+                    allowClear
+                    value={priorityFilter}
+                    onChange={setPriorityFilter}
+                    style={{ width: 150 }}
+                    options={PRIORITY_OPTIONS}
+                />
                 <Button
                     onClick={fetchCompleted}
                     icon={<ReloadOutlined />}
@@ -393,7 +520,7 @@ export default function Completed_Task_Admin() {
                     columns={columns}
                     dataSource={filtered}
                     rowKey="id"
-                    scroll={{ x: 1400 }}
+                    scroll={{ x: 2600 }}
                     loading={loading}
                     pagination={{
                         pageSize: 10,

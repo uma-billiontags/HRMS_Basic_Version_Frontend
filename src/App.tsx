@@ -1,5 +1,4 @@
 // App.tsx
-
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { AuthProvider, useAuth } from "./components/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -15,8 +14,7 @@ import Rejected_Request_Employee from "./components/employee/requests/Rejected_R
 import Reports_Employee from "./components/employee/insights/Reports_Employee";
 import Audit_History_Employee from "./components/employee/insights/Audit_History_Employee";
 import Pending_Time_Correction_Request from "./components/admin/requests/Pending_Time_Correction_Request";
-import Active_Task_Admin from "./components/admin/tasks/Active_Task_Admin";
-import Archive_Task_Admin from "./components/admin/tasks/Archive_Task_Admin";
+import All_Task_Admin from "./components/admin/tasks/All_Task_Admin";
 import Completed_Task_Admin from "./components/admin/tasks/Completed_Task_Admin";
 import Cancel_Task_Admin from "./components/admin/tasks/Cancel_Task_Admin";
 import Active_Task_Employee from "./components/employee/tasks/Active_Task_Employee";
@@ -28,6 +26,10 @@ import Review_Tasks_By_TL from "./components/employee/tasks/Review_Tasks_By_TL";
 import Team_Access from "./components/admin/Team_Access";
 import Recurring_Task_Admin from "./components/admin/tasks/Recurring_Task_Admin";
 import Recurring_Task_TL from "./components/employee/tasks/Recurring_Task_TL";
+import Rework_Tasks from "./components/admin/tasks/Rework_Tasks";
+import Open_Tasks from "./components/admin/tasks/Open_Tasks";
+import Overdue_Tasks from "./components/admin/tasks/Overdue_Tasks";
+import Completed_Tasks_Employee from "./components/employee/tasks/Completed_Tasks_Employee";
 
 
 // Shared shell: Sidebar on the left, page content on the right.
@@ -66,11 +68,14 @@ function App() {
           <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
             <Route element={<DashboardLayout role="admin" />}>
               <Route path="/admin/dashboard" element={<Admin_Dashboard />} />
-              <Route path="/admin/active_tasks" element={<Active_Task_Admin />} />
+              <Route path="/admin/all_tasks" element={<All_Task_Admin />} />
+              <Route path="admin/open_tasks" element={<Open_Tasks />} />
+              <Route path="admin/overdue_tasks" element={<Overdue_Tasks />} />
+              <Route path="/admin/rework_tasks" element={<Rework_Tasks />} />
+              <Route path="/admin/review_tasks" element={<Review_Tasks />} />
               <Route path="/admin/completed_tasks" element={<Completed_Task_Admin />} />
               <Route path="/admin/cancel_tasks" element={<Cancel_Task_Admin />} />
-              <Route path="/admin/review_tasks" element={<Review_Tasks />} />
-              <Route path="/admin/archive_tasks" element={<Archive_Task_Admin />} />
+
               <Route path="/admin/approved_requests" element={<Approved_Request_Admin />} />
               <Route path="/admin/rejected_requests" element={<Rejected_Request_Admin />} />
               <Route path="/admin/pending_time_correction_requests" element={<Pending_Time_Correction_Request />} />
@@ -88,6 +93,7 @@ function App() {
             <Route element={<DashboardLayout role="employee" />}>
               <Route path="/employee/dashboard" element={<Employee_Dashboard />} />
               <Route path="/employee/active_tasks" element={<Active_Task_Employee />} />
+              <Route path="/employee/completed_tasks" element={<Completed_Tasks_Employee />} />
               <Route path="/employee/approved_requests" element={<Approved_Request_Employee />} />
               <Route path="/employee/rejected_requests" element={<Rejected_Request_Employee />} />
               <Route path="/employee/reports" element={<Reports_Employee />} />

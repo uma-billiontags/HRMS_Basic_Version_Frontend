@@ -8,7 +8,7 @@ import {
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
-import TaskMasterAddModal from "./TaskMasterAddModal"; // adjust path to wherever you put the file
+import TaskMasterAddModal from "./TaskMasterAddModal";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -41,11 +41,12 @@ interface PriorityOption {
 
 type TaskStatus =
     | "not_started" | "in_progress" | "paused" | "submitted" | "under_review"
-    | "rework_needed" | "resubmitted" | "completed" | "on_hold" | "cancelled" | "archived";
+    | "rework_needed" | "resubmitted" | "completed" | "on_hold" | "cancelled";
 
 interface Task {
     id: number;
     task_id: string;
+    project_name: string;          // ← NEW
     task_name: string;
     task_details: string;
     department: number | null;
@@ -62,18 +63,26 @@ interface Task {
 
 interface TaskMasterOption {
     id: number;
+    project_name: string;
     task_name: string;
     default_hours: number;
-    label: string;   // "Logo Creation - 1hr"
+    label: string;
 }
 
-// ── Statuses shown on THIS screen — everything except Completed/Cancelled ──
-// Archived is already excluded server-side by get_all_tasks (unless
-// include_archived=true is passed, which this screen never does).
-const ACTIVE_STATUSES: TaskStatus[] = [
+const ALL_STATUSES: TaskStatus[] = [
+    "not_started", "in_progress", "paused",
+    "rework_needed", "on_hold",
+    "submitted", "under_review", "resubmitted",
+    "completed", "cancelled",
+];
+
+const ACTIONABLE_STATUSES: TaskStatus[] = [
     "not_started", "in_progress", "paused",
     "rework_needed", "on_hold",
 ];
+
+// Terminal states — days-to-go doesn't make sense once work is over.
+const TERMINAL_STATUSES: TaskStatus[] = ["completed", "cancelled"];
 
 const STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string }> = {
     not_started: { label: "Not Started", color: "var(--text-secondary)", bg: "var(--bg-input)" },
@@ -86,7 +95,6 @@ const STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string
     completed: { label: "Completed", color: "var(--green)", bg: "var(--green-bg)" },
     on_hold: { label: "On Hold", color: "var(--amber)", bg: "var(--amber-bg)" },
     cancelled: { label: "Cancelled", color: "var(--red)", bg: "var(--red-bg)" },
-    archived: { label: "Archived", color: "var(--text-muted)", bg: "var(--bg-input)" },
 };
 
 const PRIORITY_COLOR: Record<string, { color: string; bg: string }> = {
@@ -105,7 +113,7 @@ const WEEKDAY_OPTIONS = [
     { label: "Sat", value: 5 },
     { label: "Sun", value: 6 },
 ];
-const DEFAULT_WEEKDAYS = [0, 1, 2, 3, 4, 5]; // all except Sunday
+const DEFAULT_WEEKDAYS = [0, 1, 2, 3, 4, 5];
 
 function StatusTag({ status }: { status: TaskStatus }) {
     const meta = STATUS_META[status] ?? STATUS_META.not_started;
@@ -132,6 +140,44 @@ function PriorityTag({ priority }: { priority: string | null }) {
     );
 }
 
+// ── Days-to-go badge. Positive = time left, 0 = due today, negative = overdue.
+// Only meaningful for non-terminal tasks — TERMINAL_STATUSES rows show "—" instead.
+function DaysToGoTag({ dueDate, status }: { dueDate: string | null; status: TaskStatus }) {
+    if (!dueDate || TERMINAL_STATUSES.includes(status)) {
+        return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>;
+    }
+    const days = dayjs(dueDate).startOf("day").diff(dayjs().startOf("day"), "day");
+
+    if (days < 0) {
+        return (
+            <span style={{
+                fontSize: 11, fontWeight: 700, color: "var(--red)", background: "var(--red-bg)",
+                border: "1px solid var(--red)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
+            }}>
+                Overdue by {Math.abs(days)} {Math.abs(days) === 1 ? "day" : "days"}
+            </span>
+        );
+    }
+    if (days === 0) {
+        return (
+            <span style={{
+                fontSize: 11, fontWeight: 700, color: "var(--amber)", background: "var(--amber-bg)",
+                border: "1px solid var(--amber)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
+            }}>
+                Due today
+            </span>
+        );
+    }
+    return (
+        <span style={{
+            fontSize: 11, fontWeight: 700, color: "var(--green)", background: "var(--green-bg)",
+            border: "1px solid var(--green)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
+        }}>
+            {days} {days === 1 ? "day" : "days"} to go
+        </span>
+    );
+}
+
 function StatCard({ label, value, changeLabel, changeType }: {
     label: string; value: number; changeLabel: string; changeType: "up" | "down" | "neutral";
 }) {
@@ -149,7 +195,7 @@ function StatCard({ label, value, changeLabel, changeType }: {
     );
 }
 
-export default function Active_Task_Admin() {
+export default function All_Task_Admin() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [employees, setEmployees] = useState<EmployeeOption[]>([]);
@@ -184,6 +230,9 @@ export default function Active_Task_Admin() {
 
     const [taskMasterList, setTaskMasterList] = useState<TaskMasterOption[]>([]);
 
+    const [createProjectName, setCreateProjectName] = useState<string | undefined>(undefined);
+    const [taskMasterPrefillProject, setTaskMasterPrefillProject] = useState<string | undefined>(undefined);
+
     const fetchTasks = useCallback(() => {
         setLoading(true);
         fetch(`${BASE_URL}/api/tasks/get_all_tasks/`, {
@@ -192,10 +241,7 @@ export default function Active_Task_Admin() {
             .then((r) => r.json())
             .then((d) => {
                 const all: Task[] = Array.isArray(d) ? d : d.results || [];
-                // ── NEW: keep only active-lifecycle tasks. Completed tasks
-                // live in Completed_Task_Admin.tsx, cancelled ones in
-                // Cancel_Task_Admin.tsx — this screen is "work in flight" only.
-                setTasks(all.filter((t) => ACTIVE_STATUSES.includes(t.task_status)));
+                setTasks(all);
             })
             .catch(() => message.error("Failed to load tasks"))
             .finally(() => setLoading(false));
@@ -251,10 +297,7 @@ export default function Active_Task_Admin() {
         fetchTaskMaster();
     }, [fetchTasks, fetchDepartments, fetchEmployees, fetchPriorities, fetchTaskMaster]);
 
-    const handleTaskMasterSelect = (templateId: number) => {
-        const template = taskMasterList.find((t) => t.id === templateId);
-        if (!template) return;
-
+    const handleTaskMasterSelect = (template: TaskMasterOption) => {
         createForm.setFieldsValue({
             task_name: template.task_name,
             allotted_time: template.default_hours,
@@ -263,9 +306,9 @@ export default function Active_Task_Admin() {
     };
 
     const totalTasks = tasks.length;
-    const unassignedTasks = tasks.filter((t) => !t.assigned_to).length;
     const inProgressTasks = tasks.filter((t) => t.task_status === "in_progress").length;
     const onHoldTasks = tasks.filter((t) => t.task_status === "on_hold").length;
+    const completedTasks = tasks.filter((t) => t.task_status === "completed").length;
 
     const filtered = useMemo(() => {
         return tasks.filter((t) => {
@@ -274,7 +317,7 @@ export default function Active_Task_Admin() {
             if (search.trim()) {
                 const q = search.toLowerCase();
                 const haystack = [
-                    t.task_id, t.task_name, t.task_details,
+                    t.task_id, t.project_name, t.task_name, t.task_details,
                     t.assigned_to_name, t.department_name,
                 ];
                 if (!haystack.some((f) => f?.toLowerCase().includes(q))) return false;
@@ -286,8 +329,9 @@ export default function Active_Task_Admin() {
     const openCreate = () => {
         createForm.resetFields();
         setCreateDeptId(undefined);
-        setIsDaily(false);          // ← add this
-        setSelectedWeekdays(DEFAULT_WEEKDAYS);   // ← add this
+        setCreateProjectName(undefined);
+        setIsDaily(false);
+        setSelectedWeekdays(DEFAULT_WEEKDAYS);
         setCreateOpen(true);
     };
 
@@ -297,6 +341,17 @@ export default function Active_Task_Admin() {
     };
 
     const employeesForCreateDept = employees.filter((e) => e.department === createDeptId);
+
+    const projectNameOptions = useMemo(() => {
+        const names = Array.from(new Set(taskMasterList.map((t) => t.project_name).filter(Boolean)));
+        return names.map((n) => ({ value: n, label: n }));
+    }, [taskMasterList]);
+
+    const tasksForSelectedProject = useMemo(() => {
+        if (!createProjectName) return [];
+        return taskMasterList.filter((t) => t.project_name === createProjectName);
+    }, [taskMasterList, createProjectName]);
+
     const handleCreate = async () => {
         let values;
         try {
@@ -316,6 +371,7 @@ export default function Active_Task_Admin() {
 
             const body = isDaily
                 ? {
+                    project_name: values.project_name,
                     task_name: values.task_name,
                     task_details: values.task_details,
                     assigned_to: values.assigned_to,
@@ -328,6 +384,7 @@ export default function Active_Task_Admin() {
                     weekdays: selectedWeekdays,
                 }
                 : {
+                    project_name: values.project_name,
                     task_name: values.task_name,
                     task_details: values.task_details,
                     assigned_to: values.assigned_to,
@@ -412,7 +469,7 @@ export default function Active_Task_Admin() {
         }
     };
 
-    async function callTaskAction(task: Task, action: "hold" | "release_hold" | "archive", successMsg: string) {
+    async function callTaskAction(task: Task, action: "hold" | "release_hold", successMsg: string) {
         setBusyId(task.id);
         try {
             const res = await fetch(`${BASE_URL}/api/tasks/${task.id}/${action}/`, {
@@ -468,6 +525,16 @@ export default function Active_Task_Admin() {
             fetchTasks();
         }
     };
+    function formatAllottedTime(hours: number | null): string {
+        if (hours === null || hours === undefined) return "—";
+        const totalMinutes = Math.round(hours * 60);
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+
+        if (h && m) return `${h}h ${m}m`;
+        if (h) return `${h}h`;
+        return `${m}m`;
+    }
 
     const columns: ColumnsType<Task> = [
         {
@@ -480,8 +547,20 @@ export default function Active_Task_Admin() {
             ),
         },
         {
+            title: "Project Name",
+            dataIndex: "project_name",
+            key: "project_name",
+            width: 120,
+            render: (v: string) => (
+                v
+                    ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
+                    : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+            ),
+        },
+        {
             title: "Task",
             key: "task_name",
+            width: 160,
             render: (_: any, record: Task) => (
                 <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
@@ -502,6 +581,7 @@ export default function Active_Task_Admin() {
             title: "Department",
             dataIndex: "department_name",
             key: "department_name",
+            width: 130,
             render: (v: string | null) => (
                 v ? (
                     <span style={{
@@ -517,10 +597,20 @@ export default function Active_Task_Admin() {
             title: "Assigned To",
             dataIndex: "assigned_to_name",
             key: "assigned_to_name",
+            width: 120,
             render: (v: string | null) => (
                 v
                     ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
                     : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>Unassigned</span>
+            ),
+        },
+        {
+            title: "Assigned By",
+            dataIndex: "assigned_by_name",
+            key: "assigned_by_name",
+            width: 120,
+            render: (v: string | null) => (
+                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{v ?? "—"}</span>
             ),
         },
         {
@@ -538,12 +628,12 @@ export default function Active_Task_Admin() {
             render: (v: TaskStatus) => <StatusTag status={v} />,
         },
         {
-            title: "Allotted (hrs)",
+            title: "Allotted Time",
             dataIndex: "allotted_time",
             key: "allotted_time",
             width: 110,
             render: (v: number | null) => (
-                <span className="td-num" style={{ fontSize: 12 }}>{v ?? "—"}</span>
+                <span className="td-num" style={{ fontSize: 12 }}>{formatAllottedTime(v)}</span>
             ),
         },
         {
@@ -558,11 +648,23 @@ export default function Active_Task_Admin() {
             ),
         },
         {
+            title: "Days To Go",
+            key: "days_to_go",
+            width: 150,
+            render: (_: any, record: Task) => (
+                <DaysToGoTag dueDate={record.due_date} status={record.task_status} />
+            ),
+        },
+        {
             title: "Actions",
             key: "actions",
             width: 140,
             fixed: "right",
             render: (_: any, record: Task) => {
+                if (!ACTIONABLE_STATUSES.includes(record.task_status)) {
+                    return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>;
+                }
+
                 const items: MenuProps["items"] = [
                     {
                         key: "assign",
@@ -626,7 +728,7 @@ export default function Active_Task_Admin() {
                         fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
                         fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
                     }}>
-                        Active tasks — create, assign, and track work in progress
+                        All tasks — create, assign, and track every task's status
                     </p>
                 </div>
                 <Button onClick={openCreate} icon={<PlusOutlined />}
@@ -639,15 +741,15 @@ export default function Active_Task_Admin() {
             </div>
 
             <div className="db-stat-grid">
-                <StatCard label="Active Tasks" value={totalTasks} changeLabel="Not yet completed/cancelled" changeType="neutral" />
-                <StatCard label="Unassigned" value={unassignedTasks} changeLabel="Awaiting assignment" changeType={unassignedTasks > 0 ? "down" : "neutral"} />
+                <StatCard label="All Tasks" value={totalTasks} changeLabel="Across every status" changeType="neutral" />
                 <StatCard label="In Progress" value={inProgressTasks} changeLabel="Currently active" changeType="up" />
                 <StatCard label="On Hold" value={onHoldTasks} changeLabel="Paused by admin" changeType={onHoldTasks > 0 ? "down" : "neutral"} />
+                <StatCard label="Completed Tasks" value={completedTasks} changeLabel="Completed task list" changeType="up" />
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
                 <Input
-                    placeholder="Search by task, employee, department…"
+                    placeholder="Search by task, project, employee, department…"
                     prefix={<SearchOutlined style={{ color: "var(--text-muted)" }} />}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -664,7 +766,7 @@ export default function Active_Task_Admin() {
                     value={statusFilter}
                     onChange={setStatusFilter}
                     style={{ width: 170 }}
-                    options={ACTIVE_STATUSES.map((s) => ({ value: s, label: STATUS_META[s].label }))}
+                    options={ALL_STATUSES.map((s) => ({ value: s, label: STATUS_META[s].label }))}
                 />
                 <Select
                     placeholder="Priority"
@@ -683,7 +785,7 @@ export default function Active_Task_Admin() {
                     Refresh
                 </Button>
                 <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: "auto" }}>
-                    {filtered.length} of {tasks.length} active tasks
+                    {filtered.length} of {tasks.length} all tasks
                 </span>
             </div>
 
@@ -695,7 +797,7 @@ export default function Active_Task_Admin() {
                     columns={columns}
                     dataSource={filtered}
                     rowKey="id"
-                    scroll={{ x: 1200 }}
+                    scroll={{ x: 1500 }}
                     loading={loading}
                     pagination={{
                         pageSize: 10,
@@ -725,67 +827,74 @@ export default function Active_Task_Admin() {
                 destroyOnClose
             >
                 <Form form={createForm} layout="vertical">
-                    <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
+                    <Form.Item
+                        label="Project Name"
+                        name="project_name"
+                        rules={[{ required: true, message: "Required" }]}
+                    >
                         <Select
-                            placeholder="Select a task from the catalog"
+                            placeholder="Select or add a project"
                             showSearch
                             optionFilterProp="label"
                             options={[
-                                ...taskMasterList.map((t) => ({
-                                    value: t.task_name,
-                                    label: t.label,
-                                })),
-                                {
-                                    value: "__ADD_NEW__",
-                                    label: "Add New Task",
-                                },
+                                ...projectNameOptions,
+                                { value: "__ADD_NEW__", label: "Add New Project" },
+                            ]}
+                            optionRender={(option) => {
+                                if (option.value === "__ADD_NEW__") {
+                                    return (
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#1677ff", fontWeight: 600, padding: "4px 0" }}>
+                                            <PlusOutlined style={{ fontSize: 13, color: "#1677ff" }} />
+                                            <span>Add New Project</span>
+                                        </div>
+                                    );
+                                }
+                                return <div>{option.label}</div>;
+                            }}
+                            onChange={(value) => {
+                                if (value === "__ADD_NEW__") {
+                                    createForm.setFieldsValue({ project_name: undefined });
+                                    setTaskMasterPrefillProject(undefined);
+                                    setAddTaskMasterOpen(true);
+                                    return;
+                                }
+                                setCreateProjectName(value);
+                                // Project changed — clear whatever task/hours were picked for the old project.
+                                createForm.setFieldsValue({ task_name: undefined, allotted_time: undefined });
+                            }}
+                        />
+                    </Form.Item>
+                    <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
+                        <Select
+                            placeholder={createProjectName ? "Select a task from the catalog" : "Select a project first"}
+                            disabled={!createProjectName}
+                            showSearch
+                            optionFilterProp="label"
+                            options={[
+                                ...tasksForSelectedProject.map((t) => ({ value: t.task_name, label: t.label })),
+                                { value: "__ADD_NEW__", label: "Add New Task" },
                             ]}
                             optionRender={(option) => {
                                 const isAddNew = option.value === "__ADD_NEW__";
-
                                 if (isAddNew) {
                                     return (
-                                        <div
-                                            style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: 8,
-                                                color: "#1677ff",
-                                                fontWeight: 600,
-                                                padding: "4px 0",
-                                            }}
-                                        >
-                                            <PlusOutlined
-                                                style={{
-                                                    fontSize: 13,
-                                                    color: "#1677ff",
-                                                }}
-                                            />
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#1677ff", fontWeight: 600, padding: "4px 0" }}>
+                                            <PlusOutlined style={{ fontSize: 13, color: "#1677ff" }} />
                                             <span>Add New Task</span>
                                         </div>
                                     );
                                 }
-
-                                return (
-                                    <div>
-                                        {option.label}
-                                    </div>
-                                );
+                                return <div>{option.label}</div>;
                             }}
                             onChange={(value) => {
                                 if (value === "__ADD_NEW__") {
                                     createForm.setFieldsValue({ task_name: undefined });
+                                    setTaskMasterPrefillProject(createProjectName);
                                     setAddTaskMasterOpen(true);
                                     return;
                                 }
-
-                                const template = taskMasterList.find(
-                                    (t) => t.task_name === value
-                                );
-
-                                if (template) {
-                                    handleTaskMasterSelect(template.id);
-                                }
+                                const template = tasksForSelectedProject.find((t) => t.task_name === value);
+                                if (template) handleTaskMasterSelect(template);
                             }}
                         />
                     </Form.Item>
@@ -867,10 +976,6 @@ export default function Active_Task_Admin() {
                                 options={priorities.map((p) => ({ value: p.value, label: p.label }))}
                             />
                         </Form.Item>
-                        {/* Due Date only applies to a one-time task. For a daily recurring
-        task, each day's occurrence gets its own due_date automatically
-        (set to that day's date) — there's no single due date to pick,
-        so this field is hidden and skipped entirely when isDaily is true. */}
                         {!isDaily && (
                             <Form.Item
                                 label="Due Date"
@@ -1019,13 +1124,16 @@ export default function Active_Task_Admin() {
                 open={addTaskMasterOpen}
                 onClose={() => setAddTaskMasterOpen(false)}
                 onSaved={fetchTaskMaster}
+                prefillProjectName={taskMasterPrefillProject}
                 onCreated={(created) => {
                     const dueDate = dayjs().add(Number(created.default_hours), "hour");
                     createForm.setFieldsValue({
+                        project_name: created.project_name,
                         task_name: created.task_name,
                         allotted_time: created.default_hours,
                         due_date: dueDate,
                     });
+                    setCreateProjectName(created.project_name);
                 }}
             />
         </div>

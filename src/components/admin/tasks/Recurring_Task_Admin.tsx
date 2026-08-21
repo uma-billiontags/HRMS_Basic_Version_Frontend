@@ -19,6 +19,7 @@ function authHeaders(): HeadersInit {
 
 interface RecurringTaskDefinition {
     id: number;
+    project_name: string | null;   // ← was rendered in columns but missing here
     task_name: string;
     task_details: string;
     assigned_to: number | null;
@@ -130,7 +131,7 @@ export default function Recurring_Task_Admin() {
             if (priorityFilter && d.priority !== priorityFilter) return false;
             if (search.trim()) {
                 const q = search.toLowerCase();
-                if (![d.task_name, d.task_details, d.assigned_to_name].some((f) => f?.toLowerCase().includes(q))) return false;
+                if (![d.task_name, d.task_details, d.assigned_to_name, d.project_name].some((f) => f?.toLowerCase().includes(q))) return false;
             }
             return true;
         });
@@ -141,7 +142,6 @@ export default function Recurring_Task_Admin() {
         const expired = d.end_date ? dayjs(d.end_date).isBefore(dayjs(), "day") : false;
         return d.is_active && !expired;
     }).length;
-    const openEndedCount = definitions.filter((d) => d.is_active && !d.end_date).length;
 
     async function handleStop(definition: RecurringTaskDefinition) {
         setBusyId(definition.id);
@@ -164,7 +164,29 @@ export default function Recurring_Task_Admin() {
         }
     }
 
+    function formatAllottedTime(hours: number | null): string {
+        if (hours === null || hours === undefined) return "—";
+        const totalMinutes = Math.round(hours * 60);
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+
+        if (h && m) return `${h}h ${m}m`;
+        if (h) return `${h}h`;
+        return `${m}m`;
+    }
+
     const columns: ColumnsType<RecurringTaskDefinition> = [
+        {
+            title: "Project Name",
+            dataIndex: "project_name",
+            key: "project_name",
+            width: 120,
+            render: (v: string | null) => (
+                v
+                    ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
+                    : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+            ),
+        },
         {
             title: "Task",
             key: "task_name",
@@ -184,6 +206,7 @@ export default function Recurring_Task_Admin() {
                 </div>
             ),
         },
+
         {
             title: "Assigned To",
             dataIndex: "assigned_to_name",
@@ -203,12 +226,12 @@ export default function Recurring_Task_Admin() {
             render: (v: string | null) => <PriorityTag priority={v} />,
         },
         {
-            title: "Allotted (hrs)",
+            title: "Allotted Time",
             dataIndex: "allotted_time",
             key: "allotted_time",
             width: 110,
             render: (v: number | null) => (
-                <span className="td-num" style={{ fontSize: 12 }}>{v ?? "—"}</span>
+                <span className="td-num" style={{ fontSize: 12 }}>{formatAllottedTime(v) ?? "—"}</span>
             ),
         },
         {
@@ -323,12 +346,11 @@ export default function Recurring_Task_Admin() {
             <div className="db-stat-grid">
                 <StatCard label="Total Rules" value={totalDefinitions} changeLabel="All recurring definitions" changeType="neutral" />
                 <StatCard label="Currently Running" value={runningCount} changeLabel="Generating tasks daily" changeType="up" />
-                <StatCard label="Open-Ended" value={openEndedCount} changeLabel="No end date set" changeType="neutral" />
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
                 <Input
-                    placeholder="Search by task or employee…"
+                    placeholder="Search by task, project, or employee…"
                     prefix={<SearchOutlined style={{ color: "var(--text-muted)" }} />}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -373,7 +395,7 @@ export default function Recurring_Task_Admin() {
                     columns={columns}
                     dataSource={filtered}
                     rowKey="id"
-                    scroll={{ x: 1300 }}
+                    scroll={{ x: 1420 }}
                     loading={loading}
                     pagination={{
                         pageSize: 10,

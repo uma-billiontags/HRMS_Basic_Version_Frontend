@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal, Form, Input, InputNumber, Select, message } from "antd";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
@@ -16,6 +16,7 @@ function authHeaders(): HeadersInit {
 
 interface CreatedTaskMaster {
     id: number;
+    project_name: string;
     task_name: string;
     default_hours: number;
     is_active: boolean;
@@ -27,14 +28,24 @@ interface Props {
     onClose: () => void;
     onCreated?: (created: CreatedTaskMaster) => void;
     onSaved?: () => void;
+    /** Prefills Project Name — e.g. opened from the Task Name dropdown's
+     * "Add New Task" option while a project is already selected. */
+    prefillProjectName?: string;
 }
 
-// 15-min increments — change to 5 if you want finer control.
 const MINUTE_OPTIONS = [0, 15, 30, 45].map((m) => ({ value: m, label: `${m} min` }));
 
-export default function TaskMasterAddModal({ open, onClose, onCreated, onSaved }: Props) {
+export default function TaskMasterAddModal({ open, onClose, onCreated, onSaved, prefillProjectName }: Props) {
     const [form] = Form.useForm();
     const [saving, setSaving] = useState(false);
+
+    // destroyOnClose wipes the form each time it closes, so re-apply the
+    // prefill every time it opens rather than only on mount.
+    useEffect(() => {
+        if (open) {
+            form.setFieldsValue({ project_name: prefillProjectName || undefined });
+        }
+    }, [open, prefillProjectName, form]);
 
     const handleClose = () => {
         form.resetFields();
@@ -57,7 +68,6 @@ export default function TaskMasterAddModal({ open, onClose, onCreated, onSaved }
             return;
         }
 
-        // Round to 2 decimals so it lines up exactly with the DB field's precision.
         const default_hours = Math.round((hours + minutes / 60) * 100) / 100;
 
         setSaving(true);
@@ -66,6 +76,7 @@ export default function TaskMasterAddModal({ open, onClose, onCreated, onSaved }
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...authHeaders() },
                 body: JSON.stringify({
+                    project_name: values.project_name,
                     task_name: values.task_name,
                     default_hours,
                     is_active: true,
@@ -79,7 +90,9 @@ export default function TaskMasterAddModal({ open, onClose, onCreated, onSaved }
                 handleClose();
             } else {
                 const err = await res.json().catch(() => ({}));
-                message.error(err.task_name?.[0] || err.default_hours?.[0] || err.detail || "Failed to add task");
+                message.error(
+                    err.project_name?.[0] || err.task_name?.[0] || err.default_hours?.[0] || err.detail || "Failed to add task"
+                );
             }
         } catch {
             message.error("Network error");
@@ -101,6 +114,10 @@ export default function TaskMasterAddModal({ open, onClose, onCreated, onSaved }
             destroyOnClose
         >
             <Form form={form} layout="vertical" initialValues={{ hours: 0, minutes: 0 }}>
+                <Form.Item label="Project Name" name="project_name" rules={[{ required: true, message: "Required" }]}>
+                    <Input placeholder="e.g. Q3 Marketing Campaign" />
+                </Form.Item>
+
                 <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
                     <Input placeholder="e.g. Logo Creation" />
                 </Form.Item>

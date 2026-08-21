@@ -1,10 +1,5 @@
-// Review_Tasks.tsx
-// Admin-only screen listing every task waiting on a decision: Submitted,
-// Resubmitted, or already Under Review. Approve requires quality + 1-5 rating;
-// Request Rework requires a reason. Styled to match Task_Display.tsx/User_Tasks.tsx.
-
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Table, Button, Input, Modal, Select, Form, message } from "antd";
+import { Table, Button, Input, Modal, Select, Form, message, Image } from "antd";
 import {
     SearchOutlined, ReloadOutlined, CheckCircleOutlined, RollbackOutlined, LinkOutlined,
 } from "@ant-design/icons";
@@ -24,7 +19,8 @@ function authHeaders(): HeadersInit {
     }
 }
 
-type ReviewStatus = "submitted" | "resubmitted" | "under_review";
+type ReviewStatus = "submitted" | "resubmitted";
+type SubmissionStatus = "early" | "on_time" | "overdue";
 
 interface ReviewTask {
     id: number;
@@ -37,10 +33,12 @@ interface ReviewTask {
     task_status: ReviewStatus;
     total_time_taken: number;
     allotted_time: number | null;
+    due_date: string | null;
     task_sheet_link: string;
     employee_remarks: string;
     submitted_date: string | null;
     rework_count: number;
+    attachments: { id: number; file: string; uploaded_at: string }[];
 }
 
 const QUALITY_OPTIONS = [
@@ -54,16 +52,60 @@ const QUALITY_OPTIONS = [
 const STATUS_META: Record<ReviewStatus, { label: string; color: string; bg: string }> = {
     submitted: { label: "Submitted", color: "var(--purple)", bg: "var(--purple-bg)" },
     resubmitted: { label: "Resubmitted", color: "var(--amber)", bg: "var(--amber-bg)" },
-    under_review: { label: "Under Review", color: "var(--blue)", bg: "var(--blue-bg)" },
 };
 
+const SUBMISSION_STATUS_OPTIONS: { value: SubmissionStatus; label: string }[] = [
+    { value: "early", label: "Early" },
+    { value: "on_time", label: "On Time" },
+    { value: "overdue", label: "Overdue" },
+];
+
+const PRIORITY_COLOR: Record<string, { color: string; bg: string }> = {
+    low: { color: "var(--green)", bg: "var(--green-bg)" },
+    medium: { color: "var(--blue)", bg: "var(--blue-bg)" },
+    high: { color: "var(--amber)", bg: "var(--amber-bg)" },
+    urgent: { color: "var(--red)", bg: "var(--red-bg)" },
+};
+
+const PRIORITY_OPTIONS = [
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+    { value: "urgent", label: "Urgent" },
+];
 function StatusTag({ status }: { status: ReviewStatus }) {
     const meta = STATUS_META[status];
+
+    if (!meta) {
+        return (
+            <span
+                style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    padding: "3px 9px",
+                    borderRadius: 10,
+                    color: "var(--text-secondary)",
+                    background: "var(--bg-input)",
+                    whiteSpace: "nowrap",
+                }}
+            >
+                {status.replace("_", " ")}
+            </span>
+        );
+    }
+
     return (
-        <span style={{
-            fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 10,
-            color: meta.color, background: meta.bg, whiteSpace: "nowrap",
-        }}>
+        <span
+            style={{
+                fontSize: 10.5,
+                fontWeight: 700,
+                padding: "3px 9px",
+                borderRadius: 10,
+                color: meta.color,
+                background: meta.bg,
+                whiteSpace: "nowrap",
+            }}
+        >
             {meta.label}
         </span>
     );
@@ -86,11 +128,80 @@ function StatCard({ label, value, changeLabel, changeType }: {
     );
 }
 
+// Returns the raw filterable value: "early" | "on_time" | "overdue" | null
+function getSubmissionStatusValue(record: ReviewTask): SubmissionStatus | null {
+    if (!record.submitted_date || !record.due_date) return null;
+
+    const due = dayjs(record.due_date).startOf("day");
+    const submitted = dayjs(record.submitted_date).startOf("day");
+    const diffDays = submitted.diff(due, "day");
+
+    if (diffDays > 0) return "overdue";
+    if (diffDays < 0) return "early";
+    return "on_time";
+}
+
+// Returns display metadata (label/color) for the tag, built on top of the raw value above
+function getSubmissionTiming(record: ReviewTask): { label: string; color: string; bg: string } {
+    const value = getSubmissionStatusValue(record);
+
+    if (value === null) {
+        return { label: "—", color: "var(--text-muted)", bg: "transparent" };
+    }
+
+    if (value === "overdue") {
+        const due = dayjs(record.due_date).startOf("day");
+        const submitted = dayjs(record.submitted_date).startOf("day");
+        const diffDays = submitted.diff(due, "day");
+        return {
+            label: `Overdue (${diffDays}d)`,
+            color: "var(--red)",
+            bg: "var(--red-bg)",
+        };
+    }
+    if (value === "early") {
+        return { label: "Early", color: "var(--green)", bg: "var(--green-bg)" };
+    }
+    return { label: "On Time", color: "var(--blue)", bg: "var(--blue-bg)" };
+}
+
+function SubmissionTimingTag({ record }: { record: ReviewTask }) {
+    const meta = getSubmissionTiming(record);
+    if (meta.label === "—") {
+        return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>;
+    }
+    return (
+        <span style={{
+            fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 10,
+            color: meta.color, background: meta.bg, whiteSpace: "nowrap",
+        }}>
+            {meta.label}
+        </span>
+    );
+}
+
+function PriorityTag({ priority }: { priority: string | null }) {
+    if (!priority) return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>;
+    const meta = PRIORITY_COLOR[priority] ?? { color: "var(--text-secondary)", bg: "var(--bg-input)" };
+    return (
+        <span style={{
+            fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 10,
+            color: meta.color, background: meta.bg, textTransform: "capitalize", whiteSpace: "nowrap",
+        }}>
+            {priority}
+        </span>
+    );
+}
+
 export default function Review_Tasks() {
     const [tasks, setTasks] = useState<ReviewTask[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
-    const [busyId, setBusyId] = useState<number | null>(null);
+
+    // Filters
+    const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+    const [submissionFilter, setSubmissionFilter] = useState<string | undefined>(undefined);
+    const [priorityFilter, setPriorityFilter] = useState<string | undefined>(undefined);
 
     // Approve modal
     const [approveOpen, setApproveOpen] = useState(false);
@@ -118,48 +229,35 @@ export default function Review_Tasks() {
     }, [fetchQueue]);
 
     const filtered = useMemo(() => {
-        if (!search.trim()) return tasks;
-        const q = search.toLowerCase();
-        return tasks.filter((t) =>
-            [t.task_id, t.task_name, t.assigned_to_name].some((f) => f?.toLowerCase().includes(q))
-        );
-    }, [tasks, search]);
+        return tasks.filter((t) => {
+            if (statusFilter && t.task_status !== statusFilter) return false;
+            if (submissionFilter && getSubmissionStatusValue(t) !== submissionFilter) return false;
+            if (priorityFilter && t.priority !== priorityFilter) return false;
+            if (search.trim()) {
+                const q = search.toLowerCase();
+                if (![t.task_id, t.task_name, t.assigned_to_name].some((f) => f?.toLowerCase().includes(q))) {
+                    return false;
+                }
+            }
+            return true;
+        });
+    }, [tasks, search, statusFilter, submissionFilter, priorityFilter]);
 
     const submittedCount = tasks.filter((t) => t.task_status === "submitted").length;
     const resubmittedCount = tasks.filter((t) => t.task_status === "resubmitted").length;
-    const underReviewCount = tasks.filter((t) => t.task_status === "under_review").length;
 
-    // ── Move a task into "Under Review" (only needed if it isn't already) ────
-    async function ensureUnderReview(task: ReviewTask): Promise<boolean> {
-        if (task.task_status === "under_review") return true;
-        setBusyId(task.id);
-        try {
-            const res = await fetch(`${BASE_URL}/api/tasks/${task.id}/review/start/`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...authHeaders() },
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                message.error(err.detail || "Failed to open this task for review");
-                return false;
-            }
-            return true;
-        } catch {
-            message.error("Network error");
-            return false;
-        } finally {
-            setBusyId(null);
-            fetchQueue();
-        }
-    }
-
+    const startReview = async (taskId: number) => {
+        await fetch(`${BASE_URL}/api/tasks/${taskId}/review/start/`, {
+            method: "POST",
+            headers: { ...authHeaders() },
+        });
+    };
     // ── Approve ──────────────────────────────────────────────────────────────
     const openApprove = async (task: ReviewTask) => {
-        const ok = await ensureUnderReview(task);
-        if (!ok) return;
         approveForm.resetFields();
         setApproveTarget(task);
         setApproveOpen(true);
+        await startReview(task.id);   // ← moves submitted/resubmitted → under_review
     };
 
     const handleApprove = async () => {
@@ -203,11 +301,11 @@ export default function Review_Tasks() {
 
     // ── Request Rework ───────────────────────────────────────────────────────
     const openRework = async (task: ReviewTask) => {
-        const ok = await ensureUnderReview(task);
-        if (!ok) return;
         reworkForm.resetFields();
         setReworkTarget(task);
         setReworkOpen(true);
+        await startReview(task.id);   // ← same here
+
     };
 
     const handleRework = async () => {
@@ -241,6 +339,22 @@ export default function Review_Tasks() {
         }
     };
 
+    function resolveFileUrl(path: string): string {
+        if (/^https?:\/\//i.test(path)) return path;  // already absolute
+        return `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+    }
+
+    function formatAllottedTime(hours: number | null): string {
+        if (hours === null || hours === undefined) return "—";
+        const totalMinutes = Math.round(hours * 60);
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+
+        if (h && m) return `${h}h ${m}m`;
+        if (h) return `${h}h`;
+        return `${m}m`;
+    }
+
     const columns: ColumnsType<ReviewTask> = [
         {
             title: "Task ID",
@@ -248,18 +362,24 @@ export default function Review_Tasks() {
             key: "task_id",
             width: 100,
             render: (v: string) => (
-                <span style={{
-                    fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)",
-                    border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
-                }}>
-                    {v}
-                </span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)", border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", }}>{v}</span>
+            ),
+        },
+        {
+            title: "Project Name",
+            dataIndex: "project_name",
+            key: "project_name",
+            width: 120,
+            render: (v: string) => (
+                v
+                    ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
+                    : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
             ),
         },
         {
             title: "Task",
             key: "task_name",
-            width: 220,
+            width: 160,
             render: (_: any, record: ReviewTask) => (
                 <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
@@ -268,7 +388,7 @@ export default function Review_Tasks() {
                     {record.task_details && (
                         <div style={{
                             fontSize: 11, color: "var(--text-secondary)", marginTop: 2,
-                            maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
                             {record.task_details}
                         </div>
@@ -293,30 +413,83 @@ export default function Review_Tasks() {
             ),
         },
         {
-            title: "Employee",
+            title: "Assigned To",
             dataIndex: "assigned_to_name",
             key: "assigned_to_name",
             width: 120,
             render: (v: string | null) => (
                 v
                     ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
-                    : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+                    : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>Unassigned</span>
             ),
+        },
+        {
+            title: "Assigned By",
+            dataIndex: "assigned_by_name",
+            key: "assigned_by_name",
+            width: 120,
+            render: (v: string | null) => (
+                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{v ?? "—"}</span>
+            ),
+        },
+        {
+            title: "Priority",
+            dataIndex: "priority",
+            key: "priority",
+            width: 100,
+            render: (v: string | null) => <PriorityTag priority={v} />,
         },
         {
             title: "Status",
             dataIndex: "task_status",
             key: "task_status",
-            width: 120,
+            width: 130,
             render: (v: ReviewStatus) => <StatusTag status={v} />,
         },
         {
-            title: "Time (hrs)",
+            title: "Allotted Time",
+            dataIndex: "allotted_time",
+            key: "allotted_time",
+            width: 110,
+            render: (v: number | null) => (
+                <span className="td-num" style={{ fontSize: 12 }}>{formatAllottedTime(v)}</span>
+            ),
+        },
+        {
+            title: "Time Taken",
             key: "time",
+            width: 110,
+            render: (_: any, record: ReviewTask) => {
+                const isOver =
+                    record.allotted_time != null && record.total_time_taken > record.allotted_time;
+                return (
+                    <span
+                        className="td-num"
+                        style={{
+                            fontSize: 12,
+                            color: isOver ? "var(--red)" : undefined,
+                            fontWeight: isOver ? 700 : undefined,
+                        }}
+                    >
+                        {formatAllottedTime(record.total_time_taken)}
+                    </span>
+                );
+            },
+        },
+        {
+            title: "Submission Status",
+            key: "submission_timing",
             width: 130,
-            render: (_: any, record: ReviewTask) => (
-                <span className="td-num" style={{ fontSize: 12 }}>
-                    {record.total_time_taken} / {record.allotted_time ?? "—"}
+            render: (_: any, record: ReviewTask) => <SubmissionTimingTag record={record} />,
+        },
+        {
+            title: "Due Date",
+            dataIndex: "due_date",
+            key: "due_date",
+            width: 110,
+            render: (v: string | null) => (
+                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                    {v ? dayjs(v).format("DD MMM YYYY") : "—"}
                 </span>
             ),
         },
@@ -348,6 +521,28 @@ export default function Review_Tasks() {
             ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
         },
         {
+            title: "Attachments",
+            dataIndex: "attachments",
+            key: "attachments",
+            width: 220,   // widened a bit since more thumbnails need horizontal room
+            render: (files: ReviewTask["attachments"]) =>
+                files?.length ? (
+                    <Image.PreviewGroup>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 200 }}>
+                            {files.map((f) => (
+                                <Image
+                                    key={f.id}
+                                    src={resolveFileUrl(f.file)}
+                                    width={28}
+                                    height={28}
+                                    style={{ objectFit: "cover", borderRadius: 4, border: "1px solid var(--border)" }}
+                                />
+                            ))}
+                        </div>
+                    </Image.PreviewGroup>
+                ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
+        },
+        {
             title: "Employee Remarks",
             dataIndex: "employee_remarks",
             key: "employee_remarks",
@@ -374,14 +569,13 @@ export default function Review_Tasks() {
         {
             title: "Actions",
             key: "actions",
-            width: 210,
+            width: 150,
             fixed: "right",
             render: (_: any, record: ReviewTask) => (
                 <div style={{ display: "flex", gap: 6 }}>
                     <Button
                         size="small"
-                        loading={busyId === record.id}
-                        icon={<CheckCircleOutlined />}
+                        loading={approving && approveTarget?.id === record.id} icon={<CheckCircleOutlined />}
                         onClick={() => openApprove(record)}
                         style={{
                             fontSize: 11, fontWeight: 700, borderRadius: 6,
@@ -392,8 +586,7 @@ export default function Review_Tasks() {
                     </Button>
                     <Button
                         size="small"
-                        loading={busyId === record.id}
-                        icon={<RollbackOutlined />}
+                        loading={approving && approveTarget?.id === record.id} icon={<RollbackOutlined />}
                         onClick={() => openRework(record)}
                         style={{
                             fontSize: 11, fontWeight: 700, borderRadius: 6,
@@ -439,12 +632,6 @@ export default function Review_Tasks() {
                     changeLabel="Sent back after rework"
                     changeType={resubmittedCount > 0 ? "down" : "neutral"}
                 />
-                <StatCard
-                    label="Under Review"
-                    value={underReviewCount}
-                    changeLabel="Currently being reviewed"
-                    changeType="up"
-                />
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
@@ -459,6 +646,33 @@ export default function Review_Tasks() {
                         background: "var(--bg-input)", border: "1px solid var(--accent-light)",
                         borderRadius: 9, color: "var(--text-primary)", fontSize: 13, outline: "none",
                     }}
+                />
+                <Select
+                    placeholder="Status"
+                    allowClear
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                    style={{ width: 160 }}
+                    options={(Object.keys(STATUS_META) as ReviewStatus[]).map((s) => ({
+                        value: s,
+                        label: STATUS_META[s].label,
+                    }))}
+                />
+                <Select
+                    placeholder="Priority"
+                    allowClear
+                    value={priorityFilter}
+                    onChange={setPriorityFilter}
+                    style={{ width: 150 }}
+                    options={PRIORITY_OPTIONS}
+                />
+                <Select
+                    placeholder="Submission status"
+                    allowClear
+                    value={submissionFilter}
+                    onChange={setSubmissionFilter}
+                    style={{ width: 170 }}
+                    options={SUBMISSION_STATUS_OPTIONS}
                 />
                 <Button
                     onClick={fetchQueue}
@@ -481,7 +695,7 @@ export default function Review_Tasks() {
                     columns={columns}
                     dataSource={filtered}
                     rowKey="id"
-                    scroll={{ x: 1400 }}
+                    scroll={{ x: 2820 }}
                     loading={loading}
                     pagination={{
                         pageSize: 10,
@@ -498,6 +712,7 @@ export default function Review_Tasks() {
             {/* ── Approve Modal ── */}
             <Modal
                 open={approveOpen}
+                afterOpenChange={(open) => { if (open) approveForm.resetFields(); }}
                 onCancel={() => setApproveOpen(false)}
                 onOk={handleApprove}
                 confirmLoading={approving}
@@ -510,7 +725,7 @@ export default function Review_Tasks() {
                 okButtonProps={{ style: { background: "var(--green)", borderColor: "var(--green)" } }}
                 width={520}
                 centered
-                destroyOnClose
+                destroyOnHidden
             >
                 {approveTarget && (
                     <>
@@ -553,20 +768,14 @@ export default function Review_Tasks() {
                                                 }}
                                             >
                                                 <span>{item?.label}</span>
-
-                                                <span
-                                                    style={{
-                                                        color: "#facc15",
-                                                        fontSize: 17,
-                                                        letterSpacing: 2,
-                                                    }}
-                                                >
+                                                <span style={{ color: "#facc15", fontSize: 17, letterSpacing: 2 }}>
                                                     {"★".repeat(item?.rating ?? 0)}
                                                 </span>
                                             </div>
                                         );
                                     }}
-                                />                            </Form.Item>
+                                />
+                            </Form.Item>
                             <Form.Item label="Admin Remarks" name="admin_remarks">
                                 <Input.TextArea rows={3} placeholder="Optional notes for the employee…" />
                             </Form.Item>
