@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
-import { Button, message } from "antd";
+import { Button, message, Spin } from "antd";
 import { ReloadOutlined, ArrowRightOutlined, PlayCircleOutlined, RocketOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useAuth } from "../AuthContext"; // adjust path to match your project
@@ -87,7 +87,7 @@ function formatElapsed(seconds: number): string {
 export default function Employee_Dashboard() {
     const { user } = useAuth();
     const [data, setData] = useState<ReportData | null>(null);
-    const [_loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(true);   // ← renamed from _loading
     const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
     const [elapsed, setElapsed] = useState(0);
     const tickRef = useRef<number | null>(null);
@@ -148,64 +148,64 @@ export default function Employee_Dashboard() {
                 <Button
                     onClick={fetchAll}
                     icon={<ReloadOutlined />}
+                    loading={loading}
                     className="db-card-action"
                     style={{ height: 35, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, paddingInline: 14 }}
                 >
                     Refresh
                 </Button>
             </div>
-
-            {/* ── Currently working on ── */}
-            {activeSession ? (
-                <div className="db-chart-card" style={{
-                    marginBottom: 18, display: "flex", alignItems: "center", justifyContent: "space-between",
-                    borderLeft: "3px solid var(--blue)",
-                }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <span style={{ color: "var(--blue)", display: "flex", fontSize: 20 }}>
-                            <PlayCircleOutlined />
-                        </span>
-                        <div>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--blue)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                                Currently working on
+            <Spin spinning={loading} tip="Loading your dashboard...">
+                {/* ── Currently working on ── */}
+                {activeSession ? (
+                    <div className="db-chart-card" style={{
+                        marginBottom: 18, display: "flex", alignItems: "center", justifyContent: "space-between",
+                        borderLeft: "3px solid var(--blue)",
+                    }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <span style={{ color: "var(--blue)", display: "flex", fontSize: 20 }}>
+                                <PlayCircleOutlined />
+                            </span>
+                            <div>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--blue)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                    Currently working on
+                                </div>
+                                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{activeSession.task_name}</div>
                             </div>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{activeSession.task_name}</div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                            <span style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--blue)" }}>
+                                {formatElapsed(elapsed)}
+                            </span>
+                            <Link to="/employee/active_tasks">
+                                <Button style={{ fontSize: 12, fontWeight: 600, borderRadius: 8 }}>Go to task</Button>
+                            </Link>
                         </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                        <span style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--blue)" }}>
-                            {formatElapsed(elapsed)}
-                        </span>
-                        <Link to="/employee/active_tasks">
-                            <Button style={{ fontSize: 12, fontWeight: 600, borderRadius: 8 }}>Go to task</Button>
+                ) : (
+                    <div className="db-chart-card" style={{
+                        marginBottom: 18, display: "flex", alignItems: "center", gap: 12,
+                        color: "var(--text-secondary)",
+                    }}>
+                        <RocketOutlined style={{ fontSize: 16 }} />
+                        <span style={{ fontSize: 13 }}>No task in progress right now.</span>
+                        <Link
+                            to="/employee/active_tasks"
+                            style={{ fontSize: 12, fontWeight: 600, marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: "var(--accent)", textDecoration: "none" }}
+                        >
+                            View your tasks <ArrowRightOutlined />
                         </Link>
                     </div>
+                )}
+
+                {/* ── Overview ── */}
+                <div className="db-stat-grid" style={{ minHeight: loading && !data ? 120 : undefined }}>
+                    <StatCard label="My Total Tasks" value={data?.summary.total_tasks ?? 0} changeLabel="All time" changeType="neutral" />
+                    <StatCard label="Completed" value={data?.summary.completed ?? 0} changeLabel="Approved by admin" changeType="up" />
+                    <StatCard label="Completion Rate" value={`${data?.summary.completion_rate ?? 0}%`} changeLabel="Of your assigned tasks" changeType="up" />
+                    <StatCard label="Total Hours Logged" value={data?.summary.total_hours ?? 0} changeLabel="All time" changeType="neutral" />
                 </div>
-            ) : (
-                <div className="db-chart-card" style={{
-                    marginBottom: 18, display: "flex", alignItems: "center", gap: 12,
-                    color: "var(--text-secondary)",
-                }}>
-                    <RocketOutlined style={{ fontSize: 16 }} />
-                    <span style={{ fontSize: 13 }}>No task in progress right now.</span>
-                    <Link
-                        to="/employee/active_tasks"
-                        style={{ fontSize: 12, fontWeight: 600, marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: "var(--accent)", textDecoration: "none" }}
-                    >
-                        View your tasks <ArrowRightOutlined />
-                    </Link>
-                </div>
-            )}
-
-            {/* ── Overview ── */}
-            <div className="db-stat-grid">
-                <StatCard label="My Total Tasks" value={data?.summary.total_tasks ?? 0} changeLabel="All time" changeType="neutral" />
-                <StatCard label="Completed" value={data?.summary.completed ?? 0} changeLabel="Approved by admin" changeType="up" />
-                <StatCard label="Completion Rate" value={`${data?.summary.completion_rate ?? 0}%`} changeLabel="Of your assigned tasks" changeType="up" />
-                <StatCard label="Total Hours Logged" value={data?.summary.total_hours ?? 0} changeLabel="All time" changeType="neutral" />
-            </div>
-
-
+            </Spin>
         </div>
     );
 }

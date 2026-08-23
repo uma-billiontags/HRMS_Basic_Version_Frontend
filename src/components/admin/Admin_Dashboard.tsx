@@ -1,17 +1,5 @@
-// Admin_Dashboard.tsx
-// Landing page after admin login. Pulls the same aggregated data as
-// Reports_Admin.tsx (no filters = org-wide totals) plus one lightweight
-// count — pending reviews — so the admin sees "what needs my attention
-// today" at a glance. Styled to match Active_Task_Admin.tsx exactly:
-// same StatusTag/PriorityTag, same badge-style Task ID, same StatCard
-// with changeLabel/changeType.
-//
-// Recent Tasks table replaced with EmployeeRatingTrends — monthly average
-// rating per employee, so admin sees performance trends instead of a raw
-// task list at a glance.
-
 import { useEffect, useState, useCallback } from "react";
-import { Button, message } from "antd";
+import { Button, message, Spin } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { useAuth } from "../AuthContext"; // adjust path to match your project
 // import EmployeeRatingTrends from "./EmployeeRatingTrends"; // adjust path to match your project
@@ -86,7 +74,7 @@ interface ReportData {
 export default function Admin_Dashboard() {
     const { user } = useAuth();
     const [data, setData] = useState<ReportData | null>(null);
-    const [_loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(true);   // ← renamed from _loading, now actually used
     const [pendingReviewCount, setPendingReviewCount] = useState(0);
 
     const fetchAll = useCallback(() => {
@@ -134,6 +122,7 @@ export default function Admin_Dashboard() {
                 <Button
                     onClick={fetchAll}
                     icon={<ReloadOutlined />}
+                    loading={loading}
                     className="db-card-action"
                     style={{ height: 35, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, paddingInline: 14 }}
                 >
@@ -142,20 +131,17 @@ export default function Admin_Dashboard() {
             </div>
 
             {/* ── Overview ── */}
-            <div className="db-stat-grid">
-                <StatCard label="All Tasks" value={totalTasks} changeLabel="Total tasks tracked" changeType="neutral" />
-                <StatCard label="Open Tasks" value={openTasksCount} changeLabel="Not yet started" changeType="neutral" />
-                <StatCard label="In Progress" value={inProgressCount} changeLabel="Currently active" changeType="up" />
-                <StatCard label="Overdue Tasks" value={overdueCount} changeLabel="Past due date" changeType={overdueCount > 0 ? "down" : "neutral"} />
-                <StatCard label="Review Pending" value={pendingReviewCount} changeLabel="Awaiting your decision" changeType={pendingReviewCount > 0 ? "down" : "neutral"} />
-                <StatCard label="Overdue %" value={`${overduePercentage}%`} changeLabel="Of all tracked tasks" changeType={overduePercentage > 0 ? "down" : "neutral"} />
-                <StatCard label="Completed %" value={`${completedPercentage}%`} changeLabel="Of all tracked tasks" changeType="up" />
-            </div>
-
-            {/* ── Rating performance (replaces Recent Tasks) ── */}
-            {/* <div style={{ marginTop: 4 }}>
-                <EmployeeRatingTrends />
-            </div> */}
+            <Spin spinning={loading} tip="Loading dashboard...">
+                <div className="db-stat-grid" style={{ minHeight: loading && !data ? 160 : undefined }}>
+                    <StatCard label="All Tasks" value={totalTasks} changeLabel="Total tasks tracked" changeType="neutral" />
+                    <StatCard label="Open Tasks" value={openTasksCount} changeLabel="Not yet started" changeType="neutral" />
+                    <StatCard label="In Progress" value={inProgressCount} changeLabel="Currently active" changeType="up" />
+                    <StatCard label="Overdue Tasks" value={overdueCount} changeLabel="Past due date" changeType={overdueCount > 0 ? "down" : "neutral"} />
+                    <StatCard label="Review Pending" value={pendingReviewCount} changeLabel="Awaiting your decision" changeType={pendingReviewCount > 0 ? "down" : "neutral"} />
+                    <StatCard label="Overdue %" value={`${overduePercentage}%`} changeLabel="Of all tracked tasks" changeType={overduePercentage > 0 ? "down" : "neutral"} />
+                    <StatCard label="Completed %" value={`${completedPercentage}%`} changeLabel="Of all tracked tasks" changeType="up" />
+                </div>
+            </Spin>
         </div>
     );
 }

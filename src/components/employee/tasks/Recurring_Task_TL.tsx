@@ -175,6 +175,17 @@ export default function Recurring_Task_TL() {
 
     const columns: ColumnsType<RecurringTaskDefinition> = [
         {
+            title: "Project Name",
+            dataIndex: "project_name",
+            key: "project_name",
+            width: 120,
+            render: (v: string | null) => (
+                v
+                    ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
+                    : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+            ),
+        },        
+        {
             title: "Task",
             key: "task_name",
             render: (_: any, record: RecurringTaskDefinition) => (

@@ -38,7 +38,11 @@ const ADMIN_NAV: NavGroup[] = [
         items: [{ label: "Dashboard", icon: LayoutDashboard, to: "/admin/dashboard" }],
     },
     {
-        section: "TASKS",
+        section: "MY TASKS",
+        items: [{ label: "All Tasks", icon: LayoutDashboard, to: "/admin/my_tasks" }],
+    },
+    {
+        section: "EMPLOYEE TASKS",
         items: [
             { label: "All Tasks", icon: ClipboardList, to: "/admin/all_tasks" },
             { label: "Open Tasks", icon: FolderOpen, to: "/admin/open_tasks" },
@@ -88,7 +92,7 @@ const EMPLOYEE_NAV: NavGroup[] = [
     {
         section: "TASKS",
         items: [
-            { label: "My Tasks", icon: ClipboardList, to: "/employee/active_tasks" },
+            { label: "My Tasks", icon: ClipboardList, to: "/employee/all_tasks" },
             { label: "Completed Tasks", icon: CheckCircle2, to: "/employee/completed_tasks" },
         ],
 
@@ -114,7 +118,7 @@ const TL_NAV: NavGroup[] = [
     {
         section: "TASKS",
         items: [
-            { label: "My Task", icon: ClipboardList, to: "/employee/active_tasks" },
+            { label: "My Task", icon: ClipboardList, to: "/employee/all_tasks" },
             { label: "Team Tasks", icon: UsersRound, to: "/employee/tl_tasks" },
             { label: "Review Tasks", icon: CheckCircle2, to: "/employee/tl_review_tasks" },
             { label: "Recurring Tasks", icon: Repeat, to: "/employee/recurring_tasks" },

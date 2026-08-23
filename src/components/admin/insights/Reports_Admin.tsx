@@ -49,6 +49,7 @@ interface ReportTask {
     task_id: string;
     task_name: string;
     assigned_to_name: string | null;
+    assigned_by_name: string | null;
     priority: string | null;
     task_status: string;
     total_time_taken: number;
@@ -208,9 +209,9 @@ export default function Reports_Admin() {
 
     const handleExportCsv = () => {
         if (!data) return;
-        const headers = ["Task ID", "Task", "Assigned To", "Priority", "Status", "Total Hours", "Allotted Hours", "Assigned Date", "Quality", "Rating"];
+        const headers = ["Task ID", "Task", "Assigned To", "Assigned By", "Priority", "Status", "Total Hours", "Allotted Hours", "Assigned Date", "Quality", "Rating"];
         const lines = data.tasks.map((t) => [
-            t.task_id, t.task_name, t.assigned_to_name ?? "", t.priority ?? "",
+            t.task_id, t.task_name, t.assigned_to_name ?? "", t.assigned_by_name, t.priority ?? "",
             t.task_status, t.total_time_taken, t.allotted_time ?? "", t.assigned_date,
             t.quality_of_task, t.rating ?? "",
         ].map(csvEscape).join(","));
@@ -255,6 +256,15 @@ export default function Reports_Admin() {
                 v
                     ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
                     : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>Unassigned</span>
+            ),
+        },
+         {
+            title: "Assigned By",
+            dataIndex: "assigned_by_name",
+            key: "assigned_by_name",
+            width: 120,
+            render: (v: string | null) => (
+                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{v ?? "—"}</span>
             ),
         },
         {

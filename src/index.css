@@ -1117,3 +1117,40 @@ body {
   border-color: var(--accent) !important;
   color: var(--accent) !important;
 }
+
+.team-access-tabs.ant-segmented {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 3px;
+}
+
+.team-access-tabs .ant-segmented-item {
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    transition: color 0.15s ease;
+}
+
+.team-access-tabs .ant-segmented-item:hover:not(.ant-segmented-item-selected) {
+    color: var(--text-primary);
+}
+
+.team-access-tabs .ant-segmented-item-selected {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 7px;
+    box-shadow: none;
+}
+
+.team-access-tabs .ant-segmented-thumb {
+    background: var(--accent);
+    border-radius: 7px;
+}
+
+.team-access-tabs .ant-segmented-item-label {
+    padding: 6px 16px;
+    line-height: 1.4;
+    min-height: unset;
+}

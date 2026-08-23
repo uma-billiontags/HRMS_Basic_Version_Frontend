@@ -8,7 +8,7 @@ import {
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
-import TaskMasterAddModal from "../../admin/tasks/TaskMasterAddModal"; // adjust path to wherever you put the file
+import TaskMasterAddModal from "../../admin/tasks/Employee_Tasks/TaskMasterAddModal"; // adjust path to wherever you put the file
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -34,6 +34,11 @@ interface EmployeeOption {
     department: string;
 }
 
+interface AdminOption {
+    id: number;
+    name: string;
+}
+
 interface PriorityOption {
     value: string;
     label: string;
@@ -51,7 +56,9 @@ interface Task {
     task_details: string;
     department_name: string | null;
     assigned_to: number | null;
+    assigned_to_admin: number | null;
     assigned_to_name: string | null;
+    assignee_role: "employee" | "admin" | null;
     assigned_by_name: string | null;
     created_by_role: "admin" | "tl" | null;
     priority: string | null;
@@ -191,10 +198,11 @@ function StatCard({ label, value, changeLabel, changeType }: {
     );
 }
 
-export default function Active_Task_TL() {
+export default function TL_Create_Task() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+    const [admins, setAdmins] = useState<AdminOption[]>([]);
     const [priorities, setPriorities] = useState<PriorityOption[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -214,6 +222,9 @@ export default function Active_Task_TL() {
     const [addTaskMasterOpen, setAddTaskMasterOpen] = useState(false);
     const [taskMasterList, setTaskMasterList] = useState<TaskMasterOption[]>([]);
 
+    // ── "Assign To Type" toggle for the Create modal ──────────────────────
+    const [assigneeType, setAssigneeType] = useState<"employee" | "admin">("employee");
+
     // ── Project Name — same catalog-by-project concept as All_Task_Admin ──
     const [createProjectName, setCreateProjectName] = useState<string | undefined>(undefined);
     const [taskMasterPrefillProject, setTaskMasterPrefillProject] = useState<string | undefined>(undefined);
@@ -227,6 +238,9 @@ export default function Active_Task_TL() {
     const [assignTarget, setAssignTarget] = useState<Task | null>(null);
     const [assignDeptId, setAssignDeptId] = useState<string | undefined>(undefined);
     const [assignForm] = Form.useForm();
+
+    // ── "Assign To Type" toggle for the Reassign modal ─────────────────────
+    const [assignAssigneeType, setAssignAssigneeType] = useState<"employee" | "admin">("employee");
 
     const [busyId, setBusyId] = useState<number | null>(null);
     const [cancelOpen, setCancelOpen] = useState(false);
@@ -280,6 +294,13 @@ export default function Active_Task_TL() {
             .catch(() => message.error("Failed to load employees"));
     }, []);
 
+    const fetchAdmins = useCallback(() => {
+        fetch(`${BASE_URL}/api/tasks/get_all_admins/`, { headers: { ...authHeaders() } })
+            .then((r) => r.json())
+            .then((d) => setAdmins(Array.isArray(d) ? d : []))
+            .catch(() => message.error("Failed to load admins"));
+    }, []);
+
     const fetchPriorities = useCallback(() => {
         fetch(`${BASE_URL}/api/tasks/get_priority_choices/`, {
             headers: { ...authHeaders() },
@@ -310,9 +331,10 @@ export default function Active_Task_TL() {
         fetchTasks();
         fetchDepartments();
         fetchEmployees();
+        fetchAdmins();
         fetchPriorities();
         fetchTaskMaster();
-    }, [fetchMe, fetchTasks, fetchDepartments, fetchEmployees, fetchPriorities, fetchTaskMaster]);
+    }, [fetchMe, fetchTasks, fetchDepartments, fetchEmployees, fetchAdmins, fetchPriorities, fetchTaskMaster]);
 
     const handleTaskMasterSelect = (template: TaskMasterOption) => {
         createForm.setFieldsValue({
@@ -331,7 +353,7 @@ export default function Active_Task_TL() {
     );
 
     const totalTasks = tasks.length;
-    const unassignedTasks = tasks.filter((t) => !t.assigned_to).length;
+    const unassignedTasks = tasks.filter((t) => !t.assigned_to && !t.assigned_to_admin).length;
     const inProgressTasks = tasks.filter((t) => t.task_status === "in_progress").length;
     const selfAssignedTasks = useMemo(() => tasks.filter(isSelfAssigned).length, [tasks, isSelfAssigned]);
 
@@ -357,6 +379,7 @@ export default function Active_Task_TL() {
         setCreateProjectName(undefined);
         setIsDaily(false);
         setSelectedWeekdays(DEFAULT_WEEKDAYS);
+        setAssigneeType("employee");
         setCreateOpen(true);
     };
 
@@ -380,6 +403,9 @@ export default function Active_Task_TL() {
     // ── Create + assign in one shot (or create the recurring rule when
     // "Repeats Daily" is checked) — backend attributes it to
     // assigned_by_employee automatically since the caller is a TL.
+    // assigneeType determines whether the payload sends assigned_to
+    // (Employee) or assigned_to_admin (Admin) — backend enforces that only
+    // a TL is allowed to send assigned_to_admin.
     const handleCreate = async () => {
         let values;
         try {
@@ -403,7 +429,7 @@ export default function Active_Task_TL() {
                     project_name: values.project_name,
                     task_name: values.task_name,
                     task_details: values.task_details,
-                    assigned_to: values.assigned_to,
+                    ...(assigneeType === "admin" ? { assigned_to_admin: values.assigned_to } : { assigned_to: values.assigned_to }),
                     priority: values.priority,
                     allotted_time: values.allotted_time,
                     start_date: values.recurring_start_date.format("YYYY-MM-DD"),
@@ -416,7 +442,7 @@ export default function Active_Task_TL() {
                     project_name: values.project_name,
                     task_name: values.task_name,
                     task_details: values.task_details,
-                    assigned_to: values.assigned_to,
+                    ...(assigneeType === "admin" ? { assigned_to_admin: values.assigned_to } : { assigned_to: values.assigned_to }),
                     priority: values.priority,
                     due_date: values.due_date ? values.due_date.format("YYYY-MM-DD") : null,
                     allotted_time: values.allotted_time,
@@ -432,7 +458,7 @@ export default function Active_Task_TL() {
                 message.success(
                     isDaily
                         ? "Daily task scheduled"
-                        : values.assigned_to === myId
+                        : assigneeType === "employee" && values.assigned_to === myId
                             ? "Task created and self-assigned"
                             : "Task created and assigned"
                 );
@@ -457,11 +483,24 @@ export default function Active_Task_TL() {
     const openAssign = (record: Task, presetSelf = false) => {
         setAssignTarget(record);
         setSelfAssignMode(presetSelf);
+        // Self-assign is always to the TL themselves (an Employee), so lock the
+        // toggle to "employee" in that mode. Otherwise default to whatever
+        // this task is currently assigned as, so reopening a reassign shows
+        // the right type immediately.
+        const initialType: "employee" | "admin" = presetSelf
+            ? "employee"
+            : record.assignee_role === "admin" ? "admin" : "employee";
+        setAssignAssigneeType(initialType);
+
         const deptForForm = presetSelf ? myDepartment : record.department_name ?? undefined;
         setAssignDeptId(deptForForm);
         assignForm.setFieldsValue({
             department: deptForForm,
-            assigned_to: presetSelf ? myId ?? undefined : record.assigned_to ?? undefined,
+            assigned_to: presetSelf
+                ? myId ?? undefined
+                : initialType === "admin"
+                    ? record.assigned_to_admin ?? undefined
+                    : record.assigned_to ?? undefined,
             priority: record.priority ?? undefined,
             due_date: record.due_date ? dayjs(record.due_date) : undefined,
             allotted_time: record.allotted_time ?? undefined,
@@ -491,7 +530,9 @@ export default function Active_Task_TL() {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json", ...authHeaders() },
                 body: JSON.stringify({
-                    assigned_to: values.assigned_to,
+                    ...(assignAssigneeType === "admin"
+                        ? { assigned_to_admin: values.assigned_to }
+                        : { assigned_to: values.assigned_to }),
                     priority: values.priority,
                     due_date: values.due_date ? values.due_date.format("YYYY-MM-DD") : null,
                     allotted_time: values.allotted_time,
@@ -501,7 +542,7 @@ export default function Active_Task_TL() {
                 message.success(
                     selfAssignMode
                         ? "Task self-assigned"
-                        : assignTarget.assigned_to ? "Task reassigned" : "Task assigned"
+                        : (assignTarget.assigned_to || assignTarget.assigned_to_admin) ? "Task reassigned" : "Task assigned"
                 );
                 setAssignOpen(false);
                 fetchTasks();
@@ -651,6 +692,11 @@ export default function Active_Task_TL() {
                     {v
                         ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
                         : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>Unassigned</span>}
+                    {record.assignee_role === "admin" && (
+                        <Tag color="purple" style={{ fontSize: 9.5, fontWeight: 700, margin: 0, lineHeight: "16px" }}>
+                            Admin
+                        </Tag>
+                    )}
                     {isSelfAssigned(record) && (
                         <Tag color="green" style={{ fontSize: 9.5, fontWeight: 700, margin: 0, lineHeight: "16px" }}>
                             Self
@@ -720,7 +766,7 @@ export default function Active_Task_TL() {
                     {
                         key: "assign",
                         icon: <UserSwitchOutlined />,
-                        label: record.assigned_to ? "Reassign" : "Assign Task",
+                        label: (record.assigned_to || record.assigned_to_admin) ? "Reassign" : "Assign Task",
                         onClick: () => openAssign(record, false),
                     },
                 ];
@@ -873,8 +919,8 @@ export default function Active_Task_TL() {
 
             {/* ── Create Task modal — matches Admin's: Project Name (with
                 inline "Add New Project"), TaskMaster catalog dropdown scoped
-                to that project (with inline "Add New Task"), Department,
-                Assign To, Priority, Due Date, Allotted Time, plus the
+                to that project (with inline "Add New Task"), Assign To Type
+                (Employee/Admin), Priority, Due Date, Allotted Time, plus the
                 "Repeats Daily" recurring option, all in one create+assign step. ── */}
             <Modal
                 open={createOpen}
@@ -1031,33 +1077,54 @@ export default function Active_Task_TL() {
                             </Form.Item>
                         </div>
                     )}
+
                     <div className="db-form-row">
-                        <Form.Item
-                            label="Department"
-                            name="department"
-                            rules={[{ required: true, message: "Required" }]}
-                        >
+                        <Form.Item label="Assign To Type">
                             <Select
-                                placeholder="Select department"
-                                onChange={handleCreateDeptChange}
-                                options={departments.map((d) => ({ value: d.id, label: d.name }))}
-                            />
-                        </Form.Item>
-                        <Form.Item
-                            label="Assign To"
-                            name="assigned_to"
-                            rules={[{ required: true, message: "Required" }]}
-                        >
-                            <Select
-                                placeholder={createDeptId ? "Select employee" : "Select department first"}
-                                disabled={!createDeptId}
-                                options={employeesForCreateDept.map((e) => ({
-                                    value: e.id,
-                                    label: e.id === myId ? `${e.name} (You)` : e.name,
-                                }))}
+                                value={assigneeType}
+                                onChange={(v) => {
+                                    setAssigneeType(v);
+                                    createForm.setFieldsValue({ assigned_to: undefined, department: undefined });
+                                    setCreateDeptId(undefined);
+                                }}
+                                options={[
+                                    { value: "employee", label: "Employee" },
+                                    { value: "admin", label: "Admin" },
+                                ]}
                             />
                         </Form.Item>
                     </div>
+
+                    {assigneeType === "employee" ? (
+                        <div className="db-form-row">
+                            <Form.Item label="Department" name="department" rules={[{ required: true, message: "Required" }]}>
+                                <Select
+                                    placeholder="Select department"
+                                    onChange={handleCreateDeptChange}
+                                    options={departments.map((d) => ({ value: d.id, label: d.name }))}
+                                />
+                            </Form.Item>
+                            <Form.Item label="Assign To" name="assigned_to" rules={[{ required: true, message: "Required" }]}>
+                                <Select
+                                    placeholder={createDeptId ? "Select employee" : "Select department first"}
+                                    disabled={!createDeptId}
+                                    options={employeesForCreateDept.map((e) => ({
+                                        value: e.id,
+                                        label: e.id === myId ? `${e.name} (You)` : e.name,
+                                    }))}
+                                />
+                            </Form.Item>
+                        </div>
+                    ) : (
+                        <div className="db-form-row">
+                            <Form.Item label="Assign To (Admin)" name="assigned_to" rules={[{ required: true, message: "Required" }]}>
+                                <Select
+                                    placeholder="Select an admin"
+                                    options={admins.map((a) => ({ value: a.id, label: a.name }))}
+                                />
+                            </Form.Item>
+                        </div>
+                    )}
 
                     <div className="db-form-row">
                         <Form.Item
@@ -1095,6 +1162,9 @@ export default function Active_Task_TL() {
                 </Form>
             </Modal>
 
+            {/* ── Assign / Reassign modal — same Assign To Type toggle. When
+                self-assigning, the type is locked to "employee" since a TL
+                self-assigns as themselves, never as an admin. ── */}
             <Modal
                 open={assignOpen}
                 onCancel={() => setAssignOpen(false)}
@@ -1102,10 +1172,10 @@ export default function Active_Task_TL() {
                 confirmLoading={assigning}
                 title={
                     <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <UserSwitchOutlined /> {selfAssignMode ? "Self Assign Task" : assignTarget?.assigned_to ? "Reassign Task" : "Assign Task"}
+                        <UserSwitchOutlined /> {selfAssignMode ? "Self Assign Task" : (assignTarget?.assigned_to || assignTarget?.assigned_to_admin) ? "Reassign Task" : "Assign Task"}
                     </span>
                 }
-                okText={selfAssignMode ? "Assign to Me" : assignTarget?.assigned_to ? "Save Changes" : "Assign"}
+                okText={selfAssignMode ? "Assign to Me" : (assignTarget?.assigned_to || assignTarget?.assigned_to_admin) ? "Save Changes" : "Assign"}
                 width={640}
                 centered
                 destroyOnClose
@@ -1124,30 +1194,63 @@ export default function Active_Task_TL() {
 
                         <Form form={assignForm} layout="vertical">
                             <div className="db-form-row">
-                                <Form.Item
-                                    label="Department"
-                                    name="department"
-                                    rules={[{ required: true, message: "Required" }]}
-                                >
+                                <Form.Item label="Assign To Type">
                                     <Select
-                                        placeholder="Select department"
-                                        onChange={handleAssignDeptChange}
+                                        value={assignAssigneeType}
                                         disabled={selfAssignMode}
-                                        options={departments.map((d) => ({ value: d.id, label: d.name }))}
-                                    />
-                                </Form.Item>
-                                <Form.Item
-                                    label="Assign To"
-                                    name="assigned_to"
-                                    rules={[{ required: true, message: "Required" }]}
-                                >
-                                    <Select
-                                        placeholder={assignDeptId ? "Select employee" : "Select department first"}
-                                        disabled={selfAssignMode || !assignDeptId}
-                                        options={employeesForSelectedDept.map((e) => ({ value: e.id, label: e.name }))}
+                                        onChange={(v) => {
+                                            setAssignAssigneeType(v);
+                                            assignForm.setFieldsValue({ assigned_to: undefined, department: undefined });
+                                            setAssignDeptId(undefined);
+                                        }}
+                                        options={[
+                                            { value: "employee", label: "Employee" },
+                                            { value: "admin", label: "Admin" },
+                                        ]}
                                     />
                                 </Form.Item>
                             </div>
+
+                            {assignAssigneeType === "employee" ? (
+                                <div className="db-form-row">
+                                    <Form.Item
+                                        label="Department"
+                                        name="department"
+                                        rules={[{ required: true, message: "Required" }]}
+                                    >
+                                        <Select
+                                            placeholder="Select department"
+                                            onChange={handleAssignDeptChange}
+                                            disabled={selfAssignMode}
+                                            options={departments.map((d) => ({ value: d.id, label: d.name }))}
+                                        />
+                                    </Form.Item>
+                                    <Form.Item
+                                        label="Assign To"
+                                        name="assigned_to"
+                                        rules={[{ required: true, message: "Required" }]}
+                                    >
+                                        <Select
+                                            placeholder={assignDeptId ? "Select employee" : "Select department first"}
+                                            disabled={selfAssignMode || !assignDeptId}
+                                            options={employeesForSelectedDept.map((e) => ({ value: e.id, label: e.name }))}
+                                        />
+                                    </Form.Item>
+                                </div>
+                            ) : (
+                                <div className="db-form-row">
+                                    <Form.Item
+                                        label="Assign To (Admin)"
+                                        name="assigned_to"
+                                        rules={[{ required: true, message: "Required" }]}
+                                    >
+                                        <Select
+                                            placeholder="Select an admin"
+                                            options={admins.map((a) => ({ value: a.id, label: a.name }))}
+                                        />
+                                    </Form.Item>
+                                </div>
+                            )}
 
                             <div className="db-form-row">
                                 <Form.Item

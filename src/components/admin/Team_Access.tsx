@@ -1,14 +1,5 @@
-// Team_Access.tsx
-// Admin-only screen for managing Employee login credentials — name, email,
-// password, department, role, active/inactive. Department is a searchable
-// dropdown sourced from existing employees' departments, but also accepts
-// a brand-new value typed in (mode="tags" limited to one selection).
-// Role is free text since it's a job title (e.g. "TL", "Developer"), not
-// tied to a separate table — matching how Employee.role already works
-// elsewhere in this project (accounts/models.py).
-
 import { useEffect, useState, useCallback } from "react";
-import { Table, Button, Input, Modal, Select, Switch, Form, message } from "antd";
+import { Table, Button, Input, Modal, Select, Switch, Form, message, Segmented } from "antd";
 import {
     SearchOutlined, ReloadOutlined, EditOutlined,
     PlusOutlined, DeleteOutlined, UserOutlined,
@@ -39,6 +30,14 @@ interface EmployeeCredential {
     created_at: string;
 }
 
+interface AdminCredential {
+    id: number;
+    name: string;
+    email: string;
+    is_active: boolean;
+    created_at: string;
+}
+
 function StatCard({ label, value, changeLabel, changeType }: {
     label: string; value: number; changeLabel: string; changeType: "up" | "down" | "neutral";
 }) {
@@ -57,6 +56,7 @@ function StatCard({ label, value, changeLabel, changeType }: {
 }
 
 export default function Team_Access() {
+    // ── Employee state ───────────────────────────────────────────────────
     const [users, setUsers] = useState<EmployeeCredential[]>([]);
     const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
@@ -71,7 +71,18 @@ export default function Team_Access() {
     const [newDeptName, setNewDeptName] = useState("");
     const [savingDept, setSavingDept] = useState(false);
 
-    // ── Fetch ──────────────────────────────────────────────────────────────
+    // ── Tab state ─────────────────────────────────────────────────────────
+    const [activeTab, setActiveTab] = useState<"employee" | "admin">("employee");
+
+    // ── Admin state ───────────────────────────────────────────────────────
+    const [admins, setAdmins] = useState<AdminCredential[]>([]);
+    const [adminsLoading, setAdminsLoading] = useState(false);
+    const [adminModalOpen, setAdminModalOpen] = useState(false);
+    const [editingAdmin, setEditingAdmin] = useState<AdminCredential | null>(null);
+    const [savingAdmin, setSavingAdmin] = useState(false);
+    const [adminForm] = Form.useForm();
+
+    // ── Fetch — Employees ─────────────────────────────────────────────────
     const fetchUsers = useCallback(() => {
         setLoading(true);
         fetch(`${BASE_URL}/api/auth/employees/`, { headers: { ...authHeaders() } })
@@ -90,11 +101,29 @@ export default function Team_Access() {
 
     useEffect(() => { fetchUsers(); fetchDepartments(); }, [fetchUsers, fetchDepartments]);
 
+    // ── Fetch — Admins ────────────────────────────────────────────────────
+    const fetchAdmins = useCallback(() => {
+        setAdminsLoading(true);
+        fetch(`${BASE_URL}/api/auth/admins/`, { headers: { ...authHeaders() } })
+            .then((r) => r.json())
+            .then((d) => setAdmins(Array.isArray(d) ? d : []))
+            .catch(() => message.error("Failed to load admins"))
+            .finally(() => setAdminsLoading(false));
+    }, []);
+
+    // Lazy-load admins the first time the Admin tab is opened.
+    useEffect(() => {
+        if (activeTab === "admin" && admins.length === 0) fetchAdmins();
+    }, [activeTab, admins.length, fetchAdmins]);
+
     const totalUsers = users.length;
     const activeUsers = users.filter((u) => u.is_active).length;
     const totalDepartmentsInUse = new Set(users.map((u) => u.department).filter(Boolean)).size;
 
-    // ── Modal open/close ─────────────────────────────────────────────────────
+    const totalAdmins = admins.length;
+    const activeAdmins = admins.filter((a) => a.is_active).length;
+
+    // ── Modal open/close — Employee ──────────────────────────────────────
     const openAdd = () => {
         setEditing(null);
         form.resetFields();
@@ -116,7 +145,7 @@ export default function Team_Access() {
         setModalOpen(true);
     };
 
-    // ── Save ──────────────────────────────────────────────────────────────────
+    // ── Save — Employee ───────────────────────────────────────────────────
     const handleSave = async () => {
         let values;
         try {
@@ -136,7 +165,6 @@ export default function Team_Access() {
             role: values.role || "",
             is_active: values.is_active,
         };
-        // only send password if the admin actually typed one — required on create, optional on edit
         if (values.password) payload.password = values.password;
 
         const url = isEdit
@@ -153,7 +181,7 @@ export default function Team_Access() {
                 message.success(isEdit ? "Employee updated" : "Employee added");
                 setModalOpen(false);
                 fetchUsers();
-                fetchDepartments(); // in case a brand-new department was typed
+                fetchDepartments();
             } else {
                 const err = await res.json().catch(() => ({}));
                 message.error(err.employee_id?.[0] || err.email?.[0] || err.name?.[0] || err.password?.[0] || JSON.stringify(err) || "Save failed");
@@ -165,7 +193,7 @@ export default function Team_Access() {
         }
     };
 
-    // ── Delete ────────────────────────────────────────────────────────────────
+    // ── Delete — Employee ─────────────────────────────────────────────────
     const handleDelete = (record: EmployeeCredential) => {
         Modal.confirm({
             title: "Delete this employee?",
@@ -193,7 +221,7 @@ export default function Team_Access() {
         });
     };
 
-    // ── Toggle active/inactive inline ────────────────────────────────────────
+    // ── Toggle active/inactive inline — Employee ─────────────────────────
     const toggleActive = async (record: EmployeeCredential) => {
         try {
             const res = await fetch(`${BASE_URL}/api/auth/employees/${record.id}/edit/`, {
@@ -217,7 +245,121 @@ export default function Team_Access() {
         return [u.employee_id, u.name, u.email, u.department, u.role].some((f) => f?.toLowerCase().includes(q));
     });
 
-    // ── Table columns ────────────────────────────────────────────────────────
+    // ── Modal open/close — Admin ─────────────────────────────────────────
+    const openAddAdmin = () => {
+        setEditingAdmin(null);
+        adminForm.resetFields();
+        adminForm.setFieldsValue({ is_active: true });
+        setAdminModalOpen(true);
+    };
+
+    const openEditAdmin = (record: AdminCredential) => {
+        setEditingAdmin(record);
+        adminForm.setFieldsValue({
+            name: record.name,
+            email: record.email,
+            is_active: record.is_active,
+            password: "",
+        });
+        setAdminModalOpen(true);
+    };
+
+    // ── Save — Admin ──────────────────────────────────────────────────────
+    const handleSaveAdmin = async () => {
+        let values;
+        try {
+            values = await adminForm.validateFields();
+        } catch {
+            return;
+        }
+
+        setSavingAdmin(true);
+        const isEdit = !!editingAdmin;
+        const payload: Record<string, unknown> = {
+            name: values.name,
+            email: values.email,
+            is_active: values.is_active,
+        };
+        if (values.password) payload.password = values.password;
+
+        const url = isEdit
+            ? `${BASE_URL}/api/auth/admins/${editingAdmin.id}/edit/`
+            : `${BASE_URL}/api/auth/admins/create/`;
+
+        try {
+            const res = await fetch(url, {
+                method: isEdit ? "PATCH" : "POST",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+                body: JSON.stringify(payload),
+            });
+            if (res.ok) {
+                message.success(isEdit ? "Admin updated" : "Admin added");
+                setAdminModalOpen(false);
+                fetchAdmins();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                message.error(err.email?.[0] || err.name?.[0] || err.password?.[0] || JSON.stringify(err) || "Save failed");
+            }
+        } catch {
+            message.error("Network error");
+        } finally {
+            setSavingAdmin(false);
+        }
+    };
+
+    // ── Delete — Admin ────────────────────────────────────────────────────
+    const handleDeleteAdmin = (record: AdminCredential) => {
+        Modal.confirm({
+            title: "Delete this admin?",
+            content: `Are you sure you want to delete "${record.name}"? This cannot be undone.`,
+            okText: "Yes, Delete",
+            okButtonProps: { danger: true },
+            cancelText: "Cancel",
+            onOk: async () => {
+                try {
+                    const res = await fetch(`${BASE_URL}/api/auth/admins/${record.id}/delete/`, {
+                        method: "DELETE",
+                        headers: { ...authHeaders() },
+                    });
+                    if (res.ok) {
+                        message.success("Deleted successfully");
+                        fetchAdmins();
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        message.error(err.detail || "Failed to delete");
+                    }
+                } catch {
+                    message.error("Network error");
+                }
+            },
+        });
+    };
+
+    // ── Toggle active/inactive inline — Admin ────────────────────────────
+    const toggleActiveAdmin = async (record: AdminCredential) => {
+        try {
+            const res = await fetch(`${BASE_URL}/api/auth/admins/${record.id}/edit/`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+                body: JSON.stringify({ is_active: !record.is_active }),
+            });
+            if (res.ok) {
+                setAdmins((prev) => prev.map((a) => (a.id === record.id ? { ...a, is_active: !a.is_active } : a)));
+            } else {
+                message.error("Failed to update status");
+            }
+        } catch {
+            message.error("Network error");
+        }
+    };
+
+    const filteredAdmins = admins.filter((a) => {
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        return [a.name, a.email].some((f) => f?.toLowerCase().includes(q));
+    });
+
+    // ── Table columns — Employee ─────────────────────────────────────────
     const columns: ColumnsType<EmployeeCredential> = [
         {
             title: "Employee ID",
@@ -324,6 +466,74 @@ export default function Team_Access() {
         },
     ];
 
+    // ── Table columns — Admin ────────────────────────────────────────────
+    const adminColumns: ColumnsType<AdminCredential> = [
+        {
+            title: "Name",
+            dataIndex: "name",
+            key: "name",
+            render: (v: string) => (
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{v}</span>
+            ),
+        },
+        {
+            title: "Email",
+            dataIndex: "email",
+            key: "email",
+            render: (v: string) => (
+                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{v}</span>
+            ),
+        },
+        {
+            title: "Password",
+            key: "password",
+            width: 100,
+            render: () => (
+                <span style={{ fontSize: 13, color: "var(--text-muted)", letterSpacing: 2 }}>••••••••</span>
+            ),
+        },
+        {
+            title: "Status",
+            key: "is_active",
+            width: 110,
+            render: (_: any, record: AdminCredential) => (
+                <span
+                    onClick={() => toggleActiveAdmin(record)}
+                    style={{
+                        fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 10, cursor: "pointer",
+                        color: record.is_active ? "var(--green)" : "var(--red)",
+                        background: record.is_active ? "var(--green-bg)" : "var(--red-bg)",
+                    }}
+                >
+                    {record.is_active ? "Active" : "Inactive"}
+                </span>
+            ),
+        },
+        {
+            title: "Actions",
+            key: "actions",
+            width: 160,
+            render: (_: any, record: AdminCredential) => (
+                <div style={{ display: "flex", gap: 6 }}>
+                    <Button
+                        size="small" icon={<EditOutlined />} onClick={() => openEditAdmin(record)}
+                        style={{ fontSize: 11, fontWeight: 600, borderRadius: 6, color: "var(--blue)", borderColor: "var(--blue)", background: "var(--blue-bg)" }}
+                    >
+                        Edit
+                    </Button>
+                    <Button
+                        size="small" icon={<DeleteOutlined />} onClick={() => handleDeleteAdmin(record)}
+                        style={{ fontSize: 11, fontWeight: 600, borderRadius: 6, color: "var(--red)", borderColor: "var(--red)", background: "var(--red-bg)" }}
+                    >
+                        Delete
+                    </Button>
+                </div>
+            ),
+        },
+    ];
+
+    const isEmployeeTab = activeTab === "employee";
+
     return (
         <div>
             {/* ── Page Header ── */}
@@ -331,29 +541,45 @@ export default function Team_Access() {
                 <div>
                     <h1 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: "var(--text-primary)" }}>Team Access</h1>
                     <p style={{ fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0", fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                        Manage employee login credentials by department and role
+                        Manage employee and admin login credentials
                     </p>
                 </div>
-                <Button onClick={openAdd} icon={<PlusOutlined />}
+                <Button onClick={isEmployeeTab ? openAdd : openAddAdmin} icon={<PlusOutlined />}
                     style={{
                         borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff",
                         fontSize: 12, fontWeight: 700, padding: "8px 16px", display: "flex", alignItems: "center", gap: 6,
                     }}>
-                    Add Employee
+                    {isEmployeeTab ? "Add Employee" : "Add Admin"}
                 </Button>
             </div>
 
             {/* ── Stat Cards ── */}
-            <div className="db-stat-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-                <StatCard label="Total Employees" value={totalUsers} changeLabel={`${activeUsers} active`} changeType="up" />
-                <StatCard label="Active Employees" value={activeUsers} changeLabel="Currently enabled" changeType="neutral" />
-                <StatCard label="Departments In Use" value={totalDepartmentsInUse} changeLabel="Across all employees" changeType="neutral" />
-            </div>
+            {isEmployeeTab ? (
+                <div className="db-stat-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+                    <StatCard label="Total Employees" value={totalUsers} changeLabel={`${activeUsers} active`} changeType="up" />
+                    <StatCard label="Active Employees" value={activeUsers} changeLabel="Currently enabled" changeType="neutral" />
+                    <StatCard label="Departments In Use" value={totalDepartmentsInUse} changeLabel="Across all employees" changeType="neutral" />
+                </div>
+            ) : (
+                <div className="db-stat-grid" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+                    <StatCard label="Total Admins" value={totalAdmins} changeLabel={`${activeAdmins} active`} changeType="up" />
+                    <StatCard label="Active Admins" value={activeAdmins} changeLabel="Currently enabled" changeType="neutral" />
+                </div>
+            )}
 
-            {/* ── Search + Refresh ── */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+            {/* ── Tabs + Search + Refresh ── */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, marginTop: 20, flexWrap: "wrap" }}>
+                <Segmented
+                    value={activeTab}
+                    onChange={(v) => setActiveTab(v as "employee" | "admin")}
+                    options={[
+                        { label: "Employees", value: "employee" },
+                        { label: "Admins", value: "admin" },
+                    ]}
+                    className="team-access-tabs"
+                />
                 <Input
-                    placeholder="Search by name, email, department, role…"
+                    placeholder={isEmployeeTab ? "Search by name, email, department, role…" : "Search by name, email…"}
                     prefix={<SearchOutlined style={{ color: "var(--text-muted)" }} />}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -365,7 +591,7 @@ export default function Team_Access() {
                     }}
                 />
                 <Button
-                    onClick={fetchUsers}
+                    onClick={isEmployeeTab ? fetchUsers : fetchAdmins}
                     icon={<ReloadOutlined />}
                     className="db-card-action"
                     style={{ height: 35, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, paddingInline: 14 }}
@@ -373,31 +599,52 @@ export default function Team_Access() {
                     Refresh
                 </Button>
                 <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: "auto" }}>
-                    {filtered.length} of {users.length} employees
+                    {isEmployeeTab
+                        ? `${filtered.length} of ${users.length} employees`
+                        : `${filteredAdmins.length} of ${admins.length} admins`}
                 </span>
             </div>
 
             {/* ── Table ── */}
             <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", boxShadow: "var(--shadow-card)" }}>
-                <Table
-                    columns={columns}
-                    dataSource={filtered}
-                    rowKey="id"
-                    scroll={{ x: 1100 }}
-                    loading={loading}
-                    pagination={{
-                        pageSize: 10,
-                        showSizeChanger: true,
-                        pageSizeOptions: ["10", "20", "50"],
-                        showTotal: (total, range) => `${range[0]}–${range[1]} of ${total} employees`,
-                        style: { padding: "12px 16px", color: "var(--text-primary)" },
-                    }}
-                    rowClassName={() => "client-table-row"}
-                    style={{ fontSize: 13 }}
-                />
+                {isEmployeeTab ? (
+                    <Table
+                        columns={columns}
+                        dataSource={filtered}
+                        rowKey="id"
+                        scroll={{ x: 1100 }}
+                        loading={loading}
+                        pagination={{
+                            pageSize: 10,
+                            showSizeChanger: true,
+                            pageSizeOptions: ["10", "20", "50"],
+                            showTotal: (total, range) => `${range[0]}–${range[1]} of ${total} employees`,
+                            style: { padding: "12px 16px", color: "var(--text-primary)" },
+                        }}
+                        rowClassName={() => "client-table-row"}
+                        style={{ fontSize: 13 }}
+                    />
+                ) : (
+                    <Table
+                        columns={adminColumns}
+                        dataSource={filteredAdmins}
+                        rowKey="id"
+                        scroll={{ x: 700 }}
+                        loading={adminsLoading}
+                        pagination={{
+                            pageSize: 10,
+                            showSizeChanger: true,
+                            pageSizeOptions: ["10", "20", "50"],
+                            showTotal: (total, range) => `${range[0]}–${range[1]} of ${total} admins`,
+                            style: { padding: "12px 16px", color: "var(--text-primary)" },
+                        }}
+                        rowClassName={() => "client-table-row"}
+                        style={{ fontSize: 13 }}
+                    />
+                )}
             </div>
 
-            {/* ── Add/Edit Modal ── */}
+            {/* ── Add/Edit Modal — Employee ── */}
             <Modal
                 open={modalOpen}
                 onCancel={() => setModalOpen(false)}
@@ -492,6 +739,55 @@ export default function Team_Access() {
                     </div>
                 </Form>
             </Modal>
+
+            {/* ── Add/Edit Modal — Admin ── */}
+            <Modal
+                open={adminModalOpen}
+                onCancel={() => setAdminModalOpen(false)}
+                onOk={handleSaveAdmin}
+                confirmLoading={savingAdmin}
+                title={
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <UserOutlined /> {editingAdmin ? "Edit Admin" : "Add Admin"}
+                    </span>
+                }
+                okText={editingAdmin ? "Save Changes" : "Add"}
+                width={560}
+                centered
+                destroyOnClose
+            >
+                <Form form={adminForm} layout="vertical">
+                    <div className="db-form-row">
+                        <Form.Item label="Name" name="name" rules={[{ required: true, message: "Required" }]}>
+                            <Input placeholder="e.g. Divya" />
+                        </Form.Item>
+                        <Form.Item
+                            label="Email"
+                            name="email"
+                            rules={[{ required: true, message: "Required" }, { type: "email", message: "Enter a valid email" }]}
+                        >
+                            <Input placeholder="name@company.com" />
+                        </Form.Item>
+                    </div>
+
+                    <div className="db-form-row">
+                        <Form.Item
+                            label="Password"
+                            name="password"
+                            rules={editingAdmin ? [] : [{ required: true, message: "Password is required" }]}
+                        >
+                            <Input.Password placeholder={editingAdmin ? "Leave blank to keep unchanged" : "Enter the password"} />
+                        </Form.Item>
+                        <Form.Item label="Is Active" name="is_active" valuePropName="checked">
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, height: 36 }}>
+                                <Switch defaultChecked />
+                            </div>
+                        </Form.Item>
+                    </div>
+                </Form>
+            </Modal>
+
+            {/* ── Add New Department Modal ── */}
             <Modal
                 open={addDeptOpen}
                 onCancel={() => setAddDeptOpen(false)}
@@ -515,10 +811,6 @@ export default function Team_Access() {
                         return;
                     }
                     setSavingDept(true);
-                    // No dedicated backend table for departments (see accounts/models.py —
-                    // department is just a free-text field on Employee), so there's
-                    // nothing to POST here yet. We add it locally and pre-select it;
-                    // it becomes "real" once this employee is saved with it.
                     setDepartmentOptions((prev) => [...prev, name].sort());
                     form.setFieldsValue({ department: name });
                     setSavingDept(false);
