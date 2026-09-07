@@ -962,46 +962,42 @@ export default function TL_Create_Task() {
                 destroyOnClose
             >
                 <Form form={createForm} layout="vertical">
-                    <Form.Item
-                        label="Project Name"
-                        name="project_name"
-                        rules={[{ required: true, message: "Required" }]}
-                    >
+                    <Form.Item label="Project Name" name="project_name" rules={[{ required: true, message: "Required" }]}>
                         <Select
                             placeholder="Select or add a project"
                             showSearch
                             optionFilterProp="label"
-                            options={[
-                                ...projectNameOptions,
-                                { value: "__ADD_NEW__", label: "Add New Project" },
-                            ]}
-                            optionRender={(option) => {
-                                if (option.value === "__ADD_NEW__") {
-                                    return (
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#1677ff", fontWeight: 600, padding: "4px 0" }}>
-                                            <PlusOutlined style={{ fontSize: 13, color: "#1677ff" }} />
-                                            <span>Add New Project</span>
-                                        </div>
-                                    );
-                                }
-                                return <div>{option.label}</div>;
-                            }}
-                            onSelect={(value) => {
-                                if (value === "__ADD_NEW__") {
-                                    // setTimeout ensures Form.Item finishes its cycle before resetting the field
-                                    setTimeout(() => {
-                                        createForm.setFieldsValue({ project_name: undefined });
-                                    }, 0);
-                                    setTaskMasterPrefillProject(undefined);
-                                    setAddTaskMasterOpen(true);
-                                }
-                            }}
+                            options={projectNameOptions}
                             onChange={(value) => {
-                                if (value === "__ADD_NEW__") return;
                                 setCreateProjectName(value);
-                                // Project changed — clear whatever task/hours were picked for the old project.
                                 createForm.setFieldsValue({ task_name: undefined, allotted_time: undefined });
                             }}
+                            dropdownRender={(menu) => (
+                                <>
+                                    {menu}
+                                    <div
+                                        style={{
+                                            padding: "8px 12px",
+                                            borderTop: "1px solid #f0f0f0",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 8,
+                                            color: "#1677ff",
+                                            fontWeight: 600,
+                                            cursor: "pointer",
+                                            background: "#fafafa",
+                                        }}
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onClick={() => {
+                                            setTaskMasterPrefillProject(undefined);
+                                            setAddTaskMasterOpen(true);
+                                        }}
+                                    >
+                                        <PlusOutlined style={{ fontSize: 13, color: "#1677ff" }} />
+                                        <span>Add New Project</span>
+                                    </div>
+                                </>
+                            )}
                         />
                     </Form.Item>
 
@@ -1011,37 +1007,37 @@ export default function TL_Create_Task() {
                             disabled={!createProjectName}
                             showSearch
                             optionFilterProp="label"
-                            options={[
-                                ...tasksForSelectedProject.map((t) => ({ value: t.task_name, label: t.label })),
-                                { value: "__ADD_NEW__", label: "Add New Task" },
-                            ]}
-                            optionRender={(option) => {
-                                const isAddNew = option.value === "__ADD_NEW__";
-                                if (isAddNew) {
-                                    return (
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#1677ff", fontWeight: 600, padding: "4px 0" }}>
-                                            <PlusOutlined style={{ fontSize: 13, color: "#1677ff" }} />
-                                            <span>Add New Task</span>
-                                        </div>
-                                    );
-                                }
-                                return <div>{option.label}</div>;
-                            }}
-                            onSelect={(value) => {
-                                if (value === "__ADD_NEW__") {
-                                    // setTimeout ensures Form.Item finishes its cycle before resetting the field
-                                    setTimeout(() => {
-                                        createForm.setFieldsValue({ task_name: undefined });
-                                    }, 0);
-                                    setTaskMasterPrefillProject(createProjectName);
-                                    setAddTaskMasterOpen(true);
-                                }
-                            }}
+                            options={tasksForSelectedProject.map((t) => ({ value: t.task_name, label: t.label }))}
                             onChange={(value) => {
-                                if (value === "__ADD_NEW__") return;
                                 const template = tasksForSelectedProject.find((t) => t.task_name === value);
                                 if (template) handleTaskMasterSelect(template);
                             }}
+                            dropdownRender={(menu) => (
+                                <>
+                                    {menu}
+                                    <div
+                                        style={{
+                                            padding: "8px 12px",
+                                            borderTop: "1px solid #f0f0f0",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 8,
+                                            color: "#1677ff",
+                                            fontWeight: 600,
+                                            cursor: "pointer",
+                                            background: "#fafafa",
+                                        }}
+                                        onMouseDown={(e) => e.preventDefault()} // Prevents dropdown from closing before click registers
+                                        onClick={() => {
+                                            setTaskMasterPrefillProject(createProjectName);
+                                            setAddTaskMasterOpen(true);
+                                        }}
+                                    >
+                                        <PlusOutlined style={{ fontSize: 13, color: "#1677ff" }} />
+                                        <span>Add New Task</span>
+                                    </div>
+                                </>
+                            )}
                         />
                     </Form.Item>
                     <Form.Item

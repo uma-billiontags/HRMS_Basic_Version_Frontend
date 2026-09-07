@@ -177,7 +177,7 @@ export default function Employee_Dashboard() {
                             <span style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--blue)" }}>
                                 {formatElapsed(elapsed)}
                             </span>
-                            <Link to="/employee/active_tasks">
+                            <Link to="/employee/all_tasks">
                                 <Button style={{ fontSize: 12, fontWeight: 600, borderRadius: 8 }}>Go to task</Button>
                             </Link>
                         </div>
