@@ -3,7 +3,7 @@ import { Table, Button, Input, Modal, Select, Form, message, DatePicker, InputNu
 import {
     SearchOutlined, ReloadOutlined, PlusOutlined, UserSwitchOutlined,
     FileTextOutlined, PauseCircleOutlined, PlayCircleOutlined,
-    StopOutlined, MoreOutlined, UserAddOutlined,
+    StopOutlined, MoreOutlined, UserAddOutlined, SortAscendingOutlined, SortDescendingOutlined
 } from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -752,6 +752,24 @@ export default function TL_Create_Task() {
             title: "Days To Go",
             key: "days_to_go",
             width: 150,
+            sorter: (a: Task, b: Task) => {
+                const getDays = (t: Task) => {
+                    if (!t.due_date || TERMINAL_STATUSES.includes(t.task_status)) {
+                        return 999999;
+                    }
+                    return dayjs(t.due_date).startOf("day").diff(dayjs().startOf("day"), "day");
+                };
+                return getDays(a) - getDays(b);
+            },
+            sortDirections: ["ascend", "descend"],
+            sortIcon: ({ sortOrder }) =>
+                sortOrder === "descend" ? (
+                    <SortDescendingOutlined style={{ fontSize: 12, color: "var(--accent)", marginLeft: 4 }} />
+                ) : (
+                    <SortAscendingOutlined
+                        style={{ fontSize: 12, color: sortOrder ? "var(--accent)" : "var(--text-muted)", marginLeft: 4 }}
+                    />
+                ),
             render: (_: any, record: Task) => (
                 <DaysToGoTag dueDate={record.due_date} status={record.task_status} />
             ),
@@ -962,19 +980,25 @@ export default function TL_Create_Task() {
                                 }
                                 return <div>{option.label}</div>;
                             }}
-                            onChange={(value) => {
+                            onSelect={(value) => {
                                 if (value === "__ADD_NEW__") {
-                                    createForm.setFieldsValue({ project_name: undefined });
+                                    // setTimeout ensures Form.Item finishes its cycle before resetting the field
+                                    setTimeout(() => {
+                                        createForm.setFieldsValue({ project_name: undefined });
+                                    }, 0);
                                     setTaskMasterPrefillProject(undefined);
                                     setAddTaskMasterOpen(true);
-                                    return;
                                 }
+                            }}
+                            onChange={(value) => {
+                                if (value === "__ADD_NEW__") return;
                                 setCreateProjectName(value);
                                 // Project changed — clear whatever task/hours were picked for the old project.
                                 createForm.setFieldsValue({ task_name: undefined, allotted_time: undefined });
                             }}
                         />
                     </Form.Item>
+
                     <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
                         <Select
                             placeholder={createProjectName ? "Select a task from the catalog" : "Select a project first"}
@@ -987,51 +1011,30 @@ export default function TL_Create_Task() {
                             ]}
                             optionRender={(option) => {
                                 const isAddNew = option.value === "__ADD_NEW__";
-
                                 if (isAddNew) {
                                     return (
-                                        <div
-                                            style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: 8,
-                                                color: "#1677ff",
-                                                fontWeight: 600,
-                                                padding: "4px 0",
-                                            }}
-                                        >
-                                            <PlusOutlined
-                                                style={{
-                                                    fontSize: 13,
-                                                    color: "#1677ff",
-                                                }}
-                                            />
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#1677ff", fontWeight: 600, padding: "4px 0" }}>
+                                            <PlusOutlined style={{ fontSize: 13, color: "#1677ff" }} />
                                             <span>Add New Task</span>
                                         </div>
                                     );
                                 }
-
-                                return (
-                                    <div>
-                                        {option.label}
-                                    </div>
-                                );
+                                return <div>{option.label}</div>;
                             }}
-                            onChange={(value) => {
+                            onSelect={(value) => {
                                 if (value === "__ADD_NEW__") {
-                                    createForm.setFieldsValue({ task_name: undefined });
+                                    // setTimeout ensures Form.Item finishes its cycle before resetting the field
+                                    setTimeout(() => {
+                                        createForm.setFieldsValue({ task_name: undefined });
+                                    }, 0);
                                     setTaskMasterPrefillProject(createProjectName);
                                     setAddTaskMasterOpen(true);
-                                    return;
                                 }
-
-                                const template = tasksForSelectedProject.find(
-                                    (t) => t.task_name === value
-                                );
-
-                                if (template) {
-                                    handleTaskMasterSelect(template);
-                                }
+                            }}
+                            onChange={(value) => {
+                                if (value === "__ADD_NEW__") return;
+                                const template = tasksForSelectedProject.find((t) => t.task_name === value);
+                                if (template) handleTaskMasterSelect(template);
                             }}
                         />
                     </Form.Item>

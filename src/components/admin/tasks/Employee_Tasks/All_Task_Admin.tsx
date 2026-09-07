@@ -3,7 +3,7 @@ import { Table, Button, Input, Modal, Select, Form, message, DatePicker, InputNu
 import {
     SearchOutlined, ReloadOutlined, PlusOutlined, UserSwitchOutlined,
     FileTextOutlined, PauseCircleOutlined, PlayCircleOutlined,
-    StopOutlined, MoreOutlined,
+    StopOutlined, MoreOutlined, SortAscendingOutlined, SortDescendingOutlined
 } from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -298,10 +298,11 @@ export default function All_Task_Admin() {
     }, [fetchTasks, fetchDepartments, fetchEmployees, fetchPriorities, fetchTaskMaster]);
 
     const handleTaskMasterSelect = (template: TaskMasterOption) => {
+        const startDate = createForm.getFieldValue("start_date") || dayjs();
         createForm.setFieldsValue({
             task_name: template.task_name,
             allotted_time: template.default_hours,
-            ...(isDaily ? {} : { due_date: dayjs().add(Number(template.default_hours), "hour") }),
+            ...(isDaily ? {} : { due_date: startDate.add(Number(template.default_hours), "hour") }),
         });
     };
 
@@ -328,6 +329,9 @@ export default function All_Task_Admin() {
 
     const openCreate = () => {
         createForm.resetFields();
+        createForm.setFieldsValue({
+            start_date: dayjs(),
+        });
         setCreateDeptId(undefined);
         setCreateProjectName(undefined);
         setIsDaily(false);
@@ -389,6 +393,7 @@ export default function All_Task_Admin() {
                     task_details: values.task_details,
                     assigned_to: values.assigned_to,
                     priority: values.priority,
+                    start_date: values.start_date ? values.start_date.format("YYYY-MM-DD") : null, // <-- ADD THIS
                     due_date: values.due_date ? values.due_date.format("YYYY-MM-DD") : null,
                     allotted_time: values.allotted_time,
                 };
@@ -651,6 +656,24 @@ export default function All_Task_Admin() {
             title: "Days To Go",
             key: "days_to_go",
             width: 150,
+            sorter: (a: Task, b: Task) => {
+                const getDays = (t: Task) => {
+                    if (!t.due_date || TERMINAL_STATUSES.includes(t.task_status)) {
+                        return 999999;
+                    }
+                    return dayjs(t.due_date).startOf("day").diff(dayjs().startOf("day"), "day");
+                };
+                return getDays(a) - getDays(b);
+            },
+            sortDirections: ["ascend", "descend"],
+            sortIcon: ({ sortOrder }) =>
+                sortOrder === "descend" ? (
+                    <SortDescendingOutlined style={{ fontSize: 12, color: "var(--accent)", marginLeft: 4 }} />
+                ) : (
+                    <SortAscendingOutlined
+                        style={{ fontSize: 12, color: sortOrder ? "var(--accent)" : "var(--text-muted)", marginLeft: 4 }}
+                    />
+                ),
             render: (_: any, record: Task) => (
                 <DaysToGoTag dueDate={record.due_date} status={record.task_status} />
             ),
@@ -851,19 +874,25 @@ export default function All_Task_Admin() {
                                 }
                                 return <div>{option.label}</div>;
                             }}
-                            onChange={(value) => {
+                            onSelect={(value) => {
                                 if (value === "__ADD_NEW__") {
-                                    createForm.setFieldsValue({ project_name: undefined });
+                                    // setTimeout ensures Form.Item finishes its cycle before resetting the field
+                                    setTimeout(() => {
+                                        createForm.setFieldsValue({ project_name: undefined });
+                                    }, 0);
                                     setTaskMasterPrefillProject(undefined);
                                     setAddTaskMasterOpen(true);
-                                    return;
                                 }
+                            }}
+                            onChange={(value) => {
+                                if (value === "__ADD_NEW__") return;
                                 setCreateProjectName(value);
                                 // Project changed — clear whatever task/hours were picked for the old project.
                                 createForm.setFieldsValue({ task_name: undefined, allotted_time: undefined });
                             }}
                         />
                     </Form.Item>
+
                     <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
                         <Select
                             placeholder={createProjectName ? "Select a task from the catalog" : "Select a project first"}
@@ -886,13 +915,18 @@ export default function All_Task_Admin() {
                                 }
                                 return <div>{option.label}</div>;
                             }}
-                            onChange={(value) => {
+                            onSelect={(value) => {
                                 if (value === "__ADD_NEW__") {
-                                    createForm.setFieldsValue({ task_name: undefined });
+                                    // setTimeout ensures Form.Item finishes its cycle before resetting the field
+                                    setTimeout(() => {
+                                        createForm.setFieldsValue({ task_name: undefined });
+                                    }, 0);
                                     setTaskMasterPrefillProject(createProjectName);
                                     setAddTaskMasterOpen(true);
-                                    return;
                                 }
+                            }}
+                            onChange={(value) => {
+                                if (value === "__ADD_NEW__") return;
                                 const template = tasksForSelectedProject.find((t) => t.task_name === value);
                                 if (template) handleTaskMasterSelect(template);
                             }}
@@ -964,7 +998,6 @@ export default function All_Task_Admin() {
                             />
                         </Form.Item>
                     </div>
-
                     <div className="db-form-row">
                         <Form.Item
                             label="Priority"
@@ -976,7 +1009,56 @@ export default function All_Task_Admin() {
                                 options={priorities.map((p) => ({ value: p.value, label: p.label }))}
                             />
                         </Form.Item>
-                        {!isDaily && (
+
+                        <Form.Item
+                            label="Allotted Time (hours)"
+                            name="allotted_time"
+                            rules={[{ required: true, message: "Required" }]}
+                        >
+                            <InputNumber
+                                style={{ width: "100%" }}
+                                min={0.5}
+                                step={0.5}
+                                placeholder="e.g. 8"
+                                onChange={(val) => {
+                                    const startDate = createForm.getFieldValue("start_date") || dayjs();
+                                    if (startDate && val) {
+                                        createForm.setFieldsValue({
+                                            due_date: startDate.add(Number(val), "hour"),
+                                        });
+                                    }
+                                }}
+                            />
+                        </Form.Item>
+                    </div>
+
+                    {!isDaily && (
+                        <div className="db-form-row">
+                            <Form.Item
+                                label="Start Date"
+                                name="start_date"
+                                rules={[{ required: true, message: "Required" }]}
+                            >
+                                <DatePicker
+                                    style={{ width: "100%" }}
+                                    format="DD MMM YYYY"
+                                    onChange={(date) => {
+                                        if (date) {
+                                            const hours = createForm.getFieldValue("allotted_time");
+                                            if (hours) {
+                                                createForm.setFieldsValue({
+                                                    due_date: date.add(Number(hours), "hour"),
+                                                });
+                                            } else {
+                                                createForm.setFieldsValue({
+                                                    due_date: date,
+                                                });
+                                            }
+                                        }
+                                    }}
+                                />
+                            </Form.Item>
+
                             <Form.Item
                                 label="Due Date"
                                 name="due_date"
@@ -984,16 +1066,8 @@ export default function All_Task_Admin() {
                             >
                                 <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
                             </Form.Item>
-                        )}
-                    </div>
-
-                    <Form.Item
-                        label="Allotted Time (hours)"
-                        name="allotted_time"
-                        rules={[{ required: true, message: "Required" }]}
-                    >
-                        <InputNumber style={{ width: "100%" }} min={0.5} step={0.5} placeholder="e.g. 8" />
-                    </Form.Item>
+                        </div>
+                    )}
 
                 </Form>
             </Modal>

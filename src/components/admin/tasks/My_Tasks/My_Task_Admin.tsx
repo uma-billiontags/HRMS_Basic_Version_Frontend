@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Table, Button, Input, Modal, Form, Tooltip, Select, message, Image, Upload } from "antd";
 import {
     SearchOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined,
-    CheckCircleOutlined, LinkOutlined, UploadOutlined,
+    CheckCircleOutlined, LinkOutlined, UploadOutlined, SortAscendingOutlined, SortDescendingOutlined
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { UploadFile } from "antd";
@@ -308,45 +308,85 @@ export default function My_Task_Admin() {
     }
 
     const columns: ColumnsType<AdminTask> = [
-        { title: "Task ID", dataIndex: "task_id", key: "task_id", width: 100, render: (v: string) => (
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)", border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap" }}>{v}</span>
-        )},
-        { title: "Project Name", dataIndex: "project_name", key: "project_name", width: 120, render: (v: string | null) => (
-            v ? <span style={{ fontSize: 12.5, fontWeight: 600 }}>{v}</span> : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
-        )},
+        {
+            title: "Task ID", dataIndex: "task_id", key: "task_id", width: 100, render: (v: string) => (
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)", border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap" }}>{v}</span>
+            )
+        },
+        {
+            title: "Project Name", dataIndex: "project_name", key: "project_name", width: 120, render: (v: string | null) => (
+                v ? <span style={{ fontSize: 12.5, fontWeight: 600 }}>{v}</span> : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+            )
+        },
         { title: "Task Name", dataIndex: "task_name", key: "task_name", width: 180, fixed: "left", render: (v: string) => <span style={{ fontSize: 12.5, fontWeight: 600 }}>{v}</span> },
-        { title: "Task Details", dataIndex: "task_details", key: "task_details", width: 220, render: (v: string) => (
-            <div style={{ fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={v}>{v || "—"}</div>
-        )},
+        {
+            title: "Task Details", dataIndex: "task_details", key: "task_details", width: 220, render: (v: string) => (
+                <div style={{ fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={v}>{v || "—"}</div>
+            )
+        },
         { title: "Assigned By (TL)", dataIndex: "assigned_by_name", key: "assigned_by_name", width: 130, render: (v: string | null) => <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{v ?? "—"}</span> },
         { title: "Priority", dataIndex: "priority", key: "priority", width: 100, render: (v: string | null) => <PriorityTag priority={v} /> },
         { title: "Status", dataIndex: "task_status", key: "task_status", width: 130, render: (v: TaskStatus) => <StatusTag status={v} /> },
         { title: "Allotted Time", dataIndex: "allotted_time", key: "allotted_time", width: 110, render: (v: number | null) => <span className="td-num" style={{ fontSize: 12 }}>{formatAllottedTime(v)}</span> },
-        { title: "Time Taken", key: "time", width: 110, render: (_: any, record: AdminTask) => {
-            const isOver = record.allotted_time != null && record.total_time_taken > record.allotted_time;
-            return <span className="td-num" style={{ fontSize: 12, color: isOver ? "var(--red)" : undefined, fontWeight: isOver ? 700 : undefined }}>{formatAllottedTime(record.total_time_taken)}</span>;
-        }},
-        { title: "Remaining/Over Time", dataIndex: "remaining_or_over_time", key: "remaining_or_over_time", width: 130, render: (v: number) => (
-            <span className={v < 0 ? "td-down" : "td-up"} style={{ fontSize: 12 }}>{v < 0 ? `${formatAllottedTime(Math.abs(v))} over` : formatAllottedTime(v)}</span>
-        )},
-        { title: "Days To Go", key: "days_to_go", width: 150, render: (_: any, record: AdminTask) => <DaysToGoTag dueDate={record.due_date} status={record.task_status} /> },
+        {
+            title: "Time Taken", key: "time", width: 110, render: (_: any, record: AdminTask) => {
+                const isOver = record.allotted_time != null && record.total_time_taken > record.allotted_time;
+                return <span className="td-num" style={{ fontSize: 12, color: isOver ? "var(--red)" : undefined, fontWeight: isOver ? 700 : undefined }}>{formatAllottedTime(record.total_time_taken)}</span>;
+            }
+        },
+        {
+            title: "Remaining/Over Time", dataIndex: "remaining_or_over_time", key: "remaining_or_over_time", width: 130, render: (v: number) => (
+                <span className={v < 0 ? "td-down" : "td-up"} style={{ fontSize: 12 }}>{v < 0 ? `${formatAllottedTime(Math.abs(v))} over` : formatAllottedTime(v)}</span>
+            )
+        },
+        {
+            title: "Days To Go",
+            key: "days_to_go",
+            width: 150,
+            sorter: (a: AdminTask, b: AdminTask) => {
+                const getDays = (t: AdminTask) => {
+                    if (!t.due_date || TERMINAL_STATUSES.includes(t.task_status)) {
+                        return 999999;
+                    }
+                    return dayjs(t.due_date).startOf("day").diff(dayjs().startOf("day"), "day");
+                };
+                return getDays(a) - getDays(b);
+            },
+            sortDirections: ["ascend", "descend"],
+            sortIcon: ({ sortOrder }) =>
+                sortOrder === "descend" ? (
+                    <SortDescendingOutlined style={{ fontSize: 12, color: "var(--accent)", marginLeft: 4 }} />
+                ) : (
+                    <SortAscendingOutlined
+                        style={{ fontSize: 12, color: sortOrder ? "var(--accent)" : "var(--text-muted)", marginLeft: 4 }}
+                    />
+                ),
+            render: (_: any, record: AdminTask) => (
+                <DaysToGoTag dueDate={record.due_date} status={record.task_status} />
+            ),
+        },
         { title: "Assigned Date", dataIndex: "assigned_date", key: "assigned_date", width: 110, render: (v: string) => <span style={{ fontSize: 11.5 }}>{dayjs(v).format("DD MMM YYYY")}</span> },
         { title: "Due Date", dataIndex: "due_date", key: "due_date", width: 110, render: (v: string | null) => <span style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>{v ? dayjs(v).format("DD MMM YYYY") : "—"}</span> },
-        { title: "Task Sheet Link", dataIndex: "task_sheet_link", key: "task_sheet_link", width: 140, render: (v: string) => v ? (
-            <a href={v} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, display: "flex", alignItems: "center", gap: 4 }}><LinkOutlined /> Open</a>
-        ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span> },
-        { title: "Attachments", dataIndex: "attachments", key: "attachments", width: 200, render: (files: AdminTask["attachments"]) =>
-            files?.length ? (
-                <Image.PreviewGroup>
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 180 }}>
-                        {files.map((f) => <Image key={f.id} src={resolveFileUrl(f.file)} width={28} height={28} style={{ objectFit: "cover", borderRadius: 4, border: "1px solid var(--border)" }} />)}
-                    </div>
-                </Image.PreviewGroup>
+        {
+            title: "Task Sheet Link", dataIndex: "task_sheet_link", key: "task_sheet_link", width: 140, render: (v: string) => v ? (
+                <a href={v} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, display: "flex", alignItems: "center", gap: 4 }}><LinkOutlined /> Open</a>
             ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
         },
-        { title: "Admin Remarks", dataIndex: "admin_remarks", key: "admin_remarks", width: 160, render: (v: string) => (
-            <div style={{ fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={v}>{v || "—"}</div>
-        )},
+        {
+            title: "Attachments", dataIndex: "attachments", key: "attachments", width: 200, render: (files: AdminTask["attachments"]) =>
+                files?.length ? (
+                    <Image.PreviewGroup>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 180 }}>
+                            {files.map((f) => <Image key={f.id} src={resolveFileUrl(f.file)} width={28} height={28} style={{ objectFit: "cover", borderRadius: 4, border: "1px solid var(--border)" }} />)}
+                        </div>
+                    </Image.PreviewGroup>
+                ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+        },
+        {
+            title: "Admin Remarks", dataIndex: "admin_remarks", key: "admin_remarks", width: 160, render: (v: string) => (
+                <div style={{ fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={v}>{v || "—"}</div>
+            )
+        },
         { title: "Rework Count", dataIndex: "rework_count", key: "rework_count", width: 95, render: (v: number) => <span className="td-num" style={{ fontSize: 12 }}>{v}</span> },
         { title: "Actions", key: "actions", width: 190, fixed: "right", render: (_: any, record: AdminTask) => <TimerActions task={record} /> },
     ];

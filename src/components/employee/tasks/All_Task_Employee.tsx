@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Table, Button, Input, Modal, Form, Tooltip, Select, message, Tag, Image } from "antd";
 import {
     SearchOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined,
-    CheckCircleOutlined, LinkOutlined,
+    CheckCircleOutlined, LinkOutlined, SortAscendingOutlined, SortDescendingOutlined
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -570,6 +570,24 @@ export default function All_Task_Employee({
             title: "Days To Go",
             key: "days_to_go",
             width: 150,
+            sorter: (a: MyTask, b: MyTask) => {
+                const getDays = (t: MyTask) => {
+                    if (!t.due_date || TERMINAL_STATUSES.includes(t.task_status)) {
+                        return 999999;
+                    }
+                    return dayjs(t.due_date).startOf("day").diff(dayjs().startOf("day"), "day");
+                };
+                return getDays(a) - getDays(b);
+            },
+            sortDirections: ["ascend", "descend"],
+            sortIcon: ({ sortOrder }) =>
+                sortOrder === "descend" ? (
+                    <SortDescendingOutlined style={{ fontSize: 12, color: "var(--accent)", marginLeft: 4 }} />
+                ) : (
+                    <SortAscendingOutlined
+                        style={{ fontSize: 12, color: sortOrder ? "var(--accent)" : "var(--text-muted)", marginLeft: 4 }}
+                    />
+                ),
             render: (_: any, record: MyTask) => (
                 <DaysToGoTag dueDate={record.due_date} status={record.task_status} />
             ),

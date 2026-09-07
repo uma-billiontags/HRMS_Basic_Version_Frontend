@@ -12,7 +12,7 @@ import {
     LogOut,
     ListChecks,
     UsersRound,
-    Repeat,
+    CalendarDays, // <-- ADD THIS
     FolderOpen,
     AlarmClock,
     type LucideIcon,
@@ -39,7 +39,10 @@ const ADMIN_NAV: NavGroup[] = [
     },
     {
         section: "MY TASKS",
-        items: [{ label: "All Tasks", icon: LayoutDashboard, to: "/admin/my_tasks" }],
+        items: [
+            { label: "All Tasks", icon: LayoutDashboard, to: "/admin/my_tasks" },
+            { label: "Upcoming Tasks", icon: CalendarDays, to: "/admin/my_upcoming_tasks" }, // <-- ADD THIS
+        ],
     },
     {
         section: "EMPLOYEE TASKS",
@@ -49,9 +52,9 @@ const ADMIN_NAV: NavGroup[] = [
             { label: "Overdue Tasks", icon: AlarmClock, to: "/admin/overdue_tasks" },
             { label: "Rework Tasks", icon: ClipboardList, to: "/admin/rework_tasks" },
             { label: "Review Tasks", icon: ClipboardCheck, to: "/admin/review_tasks" },
+            { label: "Upcoming Scheduled", icon: CalendarDays, to: "/admin/upcoming_scheduled_tasks" }, // <-- ADD THIS
             { label: "Completed Tasks", icon: CheckCircle2, to: "/admin/completed_tasks" },
             { label: "Cancel Tasks", icon: XCircle, to: "/admin/cancel_tasks" },
-            { label: "Recurring Tasks", icon: Repeat, to: "/admin/recurring_tasks" },
         ],
     },
     // {
@@ -93,6 +96,7 @@ const EMPLOYEE_NAV: NavGroup[] = [
         section: "TASKS",
         items: [
             { label: "My Tasks", icon: ClipboardList, to: "/employee/all_tasks" },
+            { label: "Upcoming Tasks", icon: CalendarDays, to: "/employee/my_upcoming_tasks" }, // <-- ADD THIS
             { label: "Completed Tasks", icon: CheckCircle2, to: "/employee/completed_tasks" },
         ],
 
@@ -116,13 +120,21 @@ const EMPLOYEE_NAV: NavGroup[] = [
 const TL_NAV: NavGroup[] = [
     { section: "OVERVIEW", items: [{ label: "Dashboard", icon: LayoutDashboard, to: "/employee/dashboard" }] },
     {
-        section: "TASKS",
+        section: "MY TASKS",
         items: [
             { label: "My Task", icon: ClipboardList, to: "/employee/all_tasks" },
+            { label: "My Upcoming Tasks", icon: CalendarDays, to: "/employee/my_upcoming_tasks" }, // <-- ADD THIS
+            { label: "Completed Tasks", icon: CheckCircle2, to: "/employee/completed_tasks" },
+
+        ],
+    },
+    {
+        section: "EMPLOYEE TASKS",
+        items: [
             { label: "Team Tasks", icon: UsersRound, to: "/employee/tl_tasks" },
             { label: "Review Tasks", icon: CheckCircle2, to: "/employee/tl_review_tasks" },
-            { label: "Recurring Tasks", icon: Repeat, to: "/employee/recurring_tasks" },
-            { label: "Completed Tasks", icon: CheckCircle2, to: "/employee/completed_tasks" },
+            { label: "Upcoming Scheduled", icon: CalendarDays, to: "/employee/upcoming_scheduled_tasks" }, // <-- ADD THISa
+            { label: "Team Completed Tasks", icon: CheckCircle2, to: "/employee/tl_completed_tasks" },
 
         ],
     },
@@ -157,13 +169,61 @@ export default function Sidebar({ role, userName, isTL = false }: SidebarProps) 
     return (
         <aside className="db-sidebar">
             {/* Logo */}
-            <div className="db-logo">
-                <div className="db-logo-brand">
-                    <div className="db-logo-icon">HR</div>
-                    <span className="db-logo-name">HRMS</span>
-                </div>
-                <div className="db-logo-sub">
-                    {role === "admin" ? "Admin Portal" : isTL ? "Team Lead Portal" : "Employee Portal"}
+            {/* Logo */}
+            <div className="db-logo" style={{ padding: "16px 14px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    {/* White badge container for the logo */}
+                    <div
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "#ffffff",
+                            borderRadius: 8,
+                            padding: "0px 2px",
+                            height: 38,
+                            minWidth: 50,
+                            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
+                            flexShrink: 0,
+                        }}
+                    >
+                        <img
+                            src="/logo.jpg"
+                            alt="Billion$"
+                            style={{
+                                height: 20,
+                                width: "auto",
+                                maxWidth: 80,
+                                objectFit: "contain",
+                                display: "block",
+                            }}
+                        />
+                    </div>
+
+                    {/* Text next to the logo */}
+                    <div>
+                        <div
+                            style={{
+                                fontSize: 15,
+                                fontWeight: 800,
+                                color: "var(--sb-text-bright)",
+                                letterSpacing: "0.02em",
+                                lineHeight: 1.2,
+                            }}
+                        >
+                            HRMS
+                        </div>
+                        <div
+                            style={{
+                                fontSize: 10,
+                                color: "var(--sb-text-dim)",
+                                marginTop: 3,
+                                fontWeight: 500,
+                            }}
+                        >
+                            {role === "admin" ? "Admin Portal" : isTL ? "Team Lead Portal" : "Employee Portal"}
+                        </div>
+                    </div>
                 </div>
             </div>
 
