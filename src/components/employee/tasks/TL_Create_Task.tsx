@@ -337,13 +337,14 @@ export default function TL_Create_Task() {
     }, [fetchMe, fetchTasks, fetchDepartments, fetchEmployees, fetchAdmins, fetchPriorities, fetchTaskMaster]);
 
     const handleTaskMasterSelect = (template: TaskMasterOption) => {
+        const startDate = createForm.getFieldValue("start_date") || dayjs();
         createForm.setFieldsValue({
             task_name: template.task_name,       // stored on the Task as plain text, same as before
             allotted_time: template.default_hours,
             // Due Date only makes sense for a one-time task — skip it when
             // "Repeats Daily" is checked, since each occurrence gets its own
             // due date automatically (see generate_recurring_tasks).
-            ...(isDaily ? {} : { due_date: dayjs().add(Number(template.default_hours), "hour") }),
+            ...(isDaily ? {} : { due_date: startDate.add(Number(template.default_hours), "hour") }),
         });
     };
 
@@ -375,6 +376,9 @@ export default function TL_Create_Task() {
 
     const openCreate = () => {
         createForm.resetFields();
+        createForm.setFieldsValue({
+            start_date: dayjs(),
+        });
         setCreateDeptId(undefined);
         setCreateProjectName(undefined);
         setIsDaily(false);
@@ -444,6 +448,7 @@ export default function TL_Create_Task() {
                     task_details: values.task_details,
                     ...(assigneeType === "admin" ? { assigned_to_admin: values.assigned_to } : { assigned_to: values.assigned_to }),
                     priority: values.priority,
+                    start_date: values.start_date ? values.start_date.format("YYYY-MM-DD") : null,
                     due_date: values.due_date ? values.due_date.format("YYYY-MM-DD") : null,
                     allotted_time: values.allotted_time,
                 };
@@ -938,8 +943,9 @@ export default function TL_Create_Task() {
             {/* ── Create Task modal — matches Admin's: Project Name (with
                 inline "Add New Project"), TaskMaster catalog dropdown scoped
                 to that project (with inline "Add New Task"), Assign To Type
-                (Employee/Admin), Priority, Due Date, Allotted Time, plus the
-                "Repeats Daily" recurring option, all in one create+assign step. ── */}
+                (Employee/Admin), Priority, Start Date, Due Date, Allotted
+                Time, plus the "Repeats Daily" recurring option, all in one
+                create+assign step. ── */}
             <Modal
                 open={createOpen}
                 onCancel={() => setCreateOpen(false)}
@@ -1140,11 +1146,60 @@ export default function TL_Create_Task() {
                                 options={priorities.map((p) => ({ value: p.value, label: p.label }))}
                             />
                         </Form.Item>
-                        {/* Due Date only applies to a one-time task. For a daily
-                            recurring task, each day's occurrence gets its own
-                            due_date automatically (set to that day's date) —
-                            hidden and skipped entirely when isDaily is true. */}
-                        {!isDaily && (
+
+                        <Form.Item
+                            label="Allotted Time (hours)"
+                            name="allotted_time"
+                            rules={[{ required: true, message: "Required" }]}
+                        >
+                            <InputNumber
+                                style={{ width: "100%" }}
+                                min={0.5}
+                                step={0.5}
+                                placeholder="e.g. 8"
+                                onChange={(val) => {
+                                    const startDate = createForm.getFieldValue("start_date") || dayjs();
+                                    if (startDate && val) {
+                                        createForm.setFieldsValue({
+                                            due_date: startDate.add(Number(val), "hour"),
+                                        });
+                                    }
+                                }}
+                            />
+                        </Form.Item>
+                    </div>
+
+                    {/* Start Date / Due Date only apply to a one-time task. For
+                        a daily recurring task, each day's occurrence gets its
+                        own due_date automatically (set to that day's date) —
+                        hidden and skipped entirely when isDaily is true. */}
+                    {!isDaily && (
+                        <div className="db-form-row">
+                            <Form.Item
+                                label="Start Date"
+                                name="start_date"
+                                rules={[{ required: true, message: "Required" }]}
+                            >
+                                <DatePicker
+                                    style={{ width: "100%" }}
+                                    format="DD MMM YYYY"
+                                    onChange={(date) => {
+                                        if (date) {
+                                            const hours = createForm.getFieldValue("allotted_time");
+                                            if (hours) {
+                                                createForm.setFieldsValue({
+                                                    due_date: date.add(Number(hours), "hour"),
+                                                });
+                                            } else {
+                                                createForm.setFieldsValue({
+                                                    due_date: date,
+                                                });
+                                            }
+                                        }
+                                    }}
+                                />
+                            </Form.Item>
+
                             <Form.Item
                                 label="Due Date"
                                 name="due_date"
@@ -1152,16 +1207,8 @@ export default function TL_Create_Task() {
                             >
                                 <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
                             </Form.Item>
-                        )}
-                    </div>
-
-                    <Form.Item
-                        label="Allotted Time (hours)"
-                        name="allotted_time"
-                        rules={[{ required: true, message: "Required" }]}
-                    >
-                        <InputNumber style={{ width: "100%" }} min={0.5} step={0.5} placeholder="e.g. 8" />
-                    </Form.Item>
+                        </div>
+                    )}
                 </Form>
             </Modal>
 
@@ -1332,7 +1379,8 @@ export default function TL_Create_Task() {
                 onSaved={fetchTaskMaster}
                 prefillProjectName={taskMasterPrefillProject}
                 onCreated={(created) => {
-                    const dueDate = dayjs().add(Number(created.default_hours), "hour");
+                    const startDate = createForm.getFieldValue("start_date") || dayjs();
+                    const dueDate = startDate.add(Number(created.default_hours), "hour");
                     createForm.setFieldsValue({
                         project_name: created.project_name,
                         task_name: created.task_name,
