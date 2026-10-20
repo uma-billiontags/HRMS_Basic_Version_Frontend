@@ -404,9 +404,9 @@ export default function Attendance_Employee() {
                 body: formData,
             });
 
-            const data = await res.json();
+            const data = await res.json().catch(() => null);
             if (!res.ok) {
-                throw new Error(data.detail || "Failed to submit time correction request");
+                throw new Error(data?.detail || "Failed to submit time correction request");
             }
 
             message.success(

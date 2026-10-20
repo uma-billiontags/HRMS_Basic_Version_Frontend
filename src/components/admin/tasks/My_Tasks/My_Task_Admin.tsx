@@ -313,8 +313,8 @@ export default function My_Task_Admin() {
                 setSubmitOpen(false);
                 setAttachments([]);
             } else {
-                const err = await res.json().catch(() => ({}));
-                message.error(JSON.stringify(err) || "Failed to submit task");
+                const err = await res.json().catch(() => null);
+                message.error(err?.detail || (err && Object.keys(err).length > 0 ? JSON.stringify(err) : "Failed to submit task"));
             }
         } catch {
             message.error("Network error");
