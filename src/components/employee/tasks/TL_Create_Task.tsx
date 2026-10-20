@@ -666,6 +666,19 @@ export default function TL_Create_Task() {
             ),
         },
         {
+            title: "Sub Task ID",
+            dataIndex: "sub_task_id",
+            key: "sub_task_id",
+            width: 100,
+            render: (_: unknown, record: Task) => (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", background: "var(--green-bg)", border: "1px solid var(--green)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", width: "fit-content" }}>
+                        {record.sub_task_id ? record.sub_task_id : "—"}
+                    </span>
+                </div>
+            ),
+        },
+        {
             title: "Project Name",
             dataIndex: "project_name",
             key: "project_name",
@@ -679,7 +692,7 @@ export default function TL_Create_Task() {
         {
             title: "Task",
             key: "task_name",
-            width: 160,
+            width: 280,
             render: (_: any, record: Task) => (
                 <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
@@ -687,8 +700,11 @@ export default function TL_Create_Task() {
                     </div>
                     {record.task_details && (
                         <div style={{
-                            fontSize: 11, color: "var(--text-secondary)", marginTop: 2,
-                            maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            fontSize: 11.5,
+                            color: "var(--text-secondary)",
+                            whiteSpace: "normal",
+                            wordBreak: "break-word",
+                            lineHeight: 1.4,
                         }}>
                             {record.task_details}
                         </div>
@@ -700,7 +716,7 @@ export default function TL_Create_Task() {
             title: "Department",
             dataIndex: "department_name",
             key: "department_name",
-            width: 130,
+            width: 170,
             render: (v: string | null) => (
                 v ? (
                     <span style={{

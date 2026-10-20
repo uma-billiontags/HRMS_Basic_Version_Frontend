@@ -578,7 +578,7 @@ export default function All_Task_Employee({
             title: "Department",
             dataIndex: "department_name",
             key: "department_name",
-            width: 130,
+            width: 150,
             render: (v: string | null) => (
                 v ? (
                     <span style={{
