@@ -29,8 +29,8 @@ export default function Login() {
       <div className="login-left-panel">
         <div className="login-left-panel-overlay" />
         <div className="login-left-content">
-          <div className="login-logo-row" style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
-            {/* White badge container for the logo */}
+          <div className="login-logo-row" style={{ display: "flex", alignItems: "center", gap: 1, marginBottom: 36 }}>
+            {/* White badge container for the logo
             <div
               style={{
                 display: "flex",
@@ -56,6 +56,32 @@ export default function Login() {
                   display: "block",
                 }}
               />
+            </div> */}
+             <div style={{ padding: "8px 8px" }}>
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "#ffffff",
+                        borderRadius: 8,
+                        padding: "8px 14px",
+                        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
+                        width: "100%",
+                    }}
+                >
+                    <img
+                        src="/logo.png"
+                        alt="Billion tags"
+                        style={{
+                            width: "100%",
+                            height: "auto",
+                            maxHeight: 18,
+                            objectFit: "contain",
+                            display: "block",
+                        }}
+                    />
+                </div>
             </div>
 
             {/* Text next to logo */}
@@ -67,6 +93,7 @@ export default function Login() {
                 Interactive team workspace
               </div>
             </div>
+            
           </div>
 
           <h1 className="login-headline">

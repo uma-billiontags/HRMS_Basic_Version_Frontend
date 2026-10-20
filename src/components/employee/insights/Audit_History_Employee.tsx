@@ -26,6 +26,7 @@ function authHeaders(): HeadersInit {
 interface ActivityRow {
     id: number;
     task_id: string;
+    sub_task_id: string | null;
     task_name: string;
     actor_name: string;
     actor_role: "admin" | "employee" | "system";
@@ -115,7 +116,7 @@ export default function Audit_History_Employee() {
             if (actionFilter && r.action !== actionFilter) return false;
             if (search.trim()) {
                 const q = search.toLowerCase();
-                if (![r.task_id, r.task_name, r.action_label].some((f) => f?.toLowerCase().includes(q))) return false;
+                if (![r.task_id, r.sub_task_id, r.task_name, r.action_label].some((f) => f?.toLowerCase().includes(q))) return false;
             }
             return true;
         });
@@ -134,7 +135,7 @@ export default function Audit_History_Employee() {
             ),
         },
         {
-            title: "Task",
+            title: "Task ID",
             key: "task",
             width: 200,
             render: (_: any, r: ActivityRow) => (
@@ -145,6 +146,26 @@ export default function Audit_History_Employee() {
                     }}>
                         {r.task_id}
                     </span>
+                </div>
+            ),
+        },
+        {
+            title: "Sub Task ID",
+            key: "sub_task_id",
+            width: 200,
+            render: (_: any, r: ActivityRow) => (
+                <div>
+                    {r.sub_task_id ? (
+                        <span style={{
+                            fontSize: 11.5, fontWeight: 700, color: "var(--green)", background: "var(--green-bg)",
+                            border: "1px solid var(--green)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
+                        }}>
+                            {r.sub_task_id}
+                        </span>
+                    ) : (
+                        <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+                    )}
+
                     <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", marginTop: 4 }}>
                         {r.task_name}
                     </div>
@@ -209,7 +230,7 @@ export default function Audit_History_Employee() {
             }}>
                 <div>
                     <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>
-                        My Activity History
+                        Activity History
                     </h1>
                     <p style={{
                         fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",

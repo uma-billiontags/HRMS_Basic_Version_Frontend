@@ -24,6 +24,7 @@ function authHeaders(): HeadersInit {
 interface ActivityRow {
     id: number;
     task_id: string;
+    sub_task_id: string | null;
     task_name: string;
     actor_name: string;
     actor_role: "admin" | "employee" | "system";
@@ -124,7 +125,7 @@ export default function Audit_History_Admin() {
         if (!search.trim()) return rows;
         const q = search.toLowerCase();
         return rows.filter((r) =>
-            [r.task_id, r.task_name, r.actor_name, r.action_label].some((f) => f?.toLowerCase().includes(q))
+            [r.task_id, r.sub_task_id, r.task_name, r.actor_name, r.action_label].some((f) => f?.toLowerCase().includes(q))
         );
     }, [rows, search]);
 
@@ -141,7 +142,7 @@ export default function Audit_History_Admin() {
             ),
         },
         {
-            title: "Task",
+            title: "Task ID",
             key: "task",
             width: 200,
             render: (_: any, r: ActivityRow) => (
@@ -152,6 +153,26 @@ export default function Audit_History_Admin() {
                     }}>
                         {r.task_id}
                     </span>
+                </div>
+            ),
+        },
+                {
+            title: "Sub Task ID",
+            key: "sub_task_id",
+            width: 200,
+            render: (_: any, r: ActivityRow) => (
+                <div>
+                    {r.sub_task_id ? (
+                        <span style={{
+                            fontSize: 11.5, fontWeight: 700, color: "var(--green)", background: "var(--green-bg)",
+                            border: "1px solid var(--green)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap",
+                        }}>
+                            {r.sub_task_id}
+                        </span>
+                    ) : (
+                        <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+                    )}
+                    
                     <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", marginTop: 4 }}>
                         {r.task_name}
                     </div>

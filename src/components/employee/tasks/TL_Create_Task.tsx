@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Table, Button, Input, Modal, Select, Form, message, DatePicker, InputNumber, Tag, Dropdown, Checkbox } from "antd";
+import { Table, Button, Input, Modal, Select, Form, message, DatePicker, InputNumber, Tag, Dropdown, Checkbox, TimePicker } from "antd";
 import {
     SearchOutlined, ReloadOutlined, PlusOutlined, UserSwitchOutlined,
     FileTextOutlined, PauseCircleOutlined, PlayCircleOutlined,
-    StopOutlined, MoreOutlined, UserAddOutlined, SortAscendingOutlined, SortDescendingOutlined
+    StopOutlined, MoreOutlined, UserAddOutlined, SortAscendingOutlined, SortDescendingOutlined,
+    UploadOutlined
 } from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import TaskMasterAddModal from "../../admin/tasks/Employee_Tasks/TaskMasterAddModal"; // adjust path to wherever you put the file
+import BulkUploadTasksModal from "../../admin/tasks/Employee_Tasks/BulkUploadTasksModal";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -51,6 +53,7 @@ type TaskStatus =
 interface Task {
     id: number;
     task_id: string;
+    sub_task_id: string | null;
     project_name: string | null;
     task_name: string;
     task_details: string;
@@ -63,6 +66,7 @@ interface Task {
     created_by_role: "admin" | "tl" | null;
     priority: string | null;
     due_date: string | null;
+    due_time?: string | null;  // <-- ADD THIS
     allotted_time: number | null;
     task_status: TaskStatus;
     assigned_date: string;
@@ -215,6 +219,7 @@ export default function TL_Create_Task() {
     const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
     const [priorityFilter, setPriorityFilter] = useState<string | undefined>(undefined);
 
+    const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
     const [createOpen, setCreateOpen] = useState(false);
     const [creating, setCreating] = useState(false);
     const [createForm] = Form.useForm();
@@ -226,8 +231,15 @@ export default function TL_Create_Task() {
     const [assigneeType, setAssigneeType] = useState<"employee" | "admin">("employee");
 
     // ── Project Name — same catalog-by-project concept as All_Task_Admin ──
-    const [createProjectName, setCreateProjectName] = useState<string | undefined>(undefined);
     const [taskMasterPrefillProject, setTaskMasterPrefillProject] = useState<string | undefined>(undefined);
+    const [customProjects, setCustomProjects] = useState<string[]>(() => {
+        try {
+            const saved = localStorage.getItem("custom_projects");
+            return saved ? JSON.parse(saved) : [];
+        } catch {
+            return [];
+        }
+    });
 
     // ── recurring/"Repeats Daily" state ──────────────────────────────
     const [isDaily, setIsDaily] = useState(false);
@@ -336,17 +348,6 @@ export default function TL_Create_Task() {
         fetchTaskMaster();
     }, [fetchMe, fetchTasks, fetchDepartments, fetchEmployees, fetchAdmins, fetchPriorities, fetchTaskMaster]);
 
-    const handleTaskMasterSelect = (template: TaskMasterOption) => {
-        const startDate = createForm.getFieldValue("start_date") || dayjs();
-        createForm.setFieldsValue({
-            task_name: template.task_name,       // stored on the Task as plain text, same as before
-            allotted_time: template.default_hours,
-            // Due Date only makes sense for a one-time task — skip it when
-            // "Repeats Daily" is checked, since each occurrence gets its own
-            // due date automatically (see generate_recurring_tasks).
-            ...(isDaily ? {} : { due_date: startDate.add(Number(template.default_hours), "hour") }),
-        });
-    };
 
     const isSelfAssigned = useCallback(
         (task: Task) => myId !== null && task.assigned_to === myId,
@@ -365,7 +366,7 @@ export default function TL_Create_Task() {
             if (search.trim()) {
                 const q = search.toLowerCase();
                 const haystack = [
-                    t.task_id, t.project_name, t.task_name, t.task_details,
+                    t.task_id, t.sub_task_id, t.project_name, t.task_name, t.task_details,
                     t.assigned_to_name, t.department_name,
                 ];
                 if (!haystack.some((f) => f?.toLowerCase().includes(q))) return false;
@@ -380,7 +381,6 @@ export default function TL_Create_Task() {
             start_date: dayjs(),
         });
         setCreateDeptId(undefined);
-        setCreateProjectName(undefined);
         setIsDaily(false);
         setSelectedWeekdays(DEFAULT_WEEKDAYS);
         setAssigneeType("employee");
@@ -395,14 +395,29 @@ export default function TL_Create_Task() {
     const employeesForCreateDept = employees.filter((e) => e.department === createDeptId);
 
     const projectNameOptions = useMemo(() => {
-        const names = Array.from(new Set(taskMasterList.map((t) => t.project_name).filter(Boolean)));
-        return names.map((n) => ({ value: n, label: n }));
-    }, [taskMasterList]);
+        const fromCatalog = taskMasterList.map((t) => t.project_name);
+        const fromTasks = tasks.map((t) => t.project_name);
+        const allNames = Array.from(new Set([...fromCatalog, ...fromTasks, ...customProjects].filter(Boolean)));
+        return allNames.map((n) => ({ value: n, label: n }));
+    }, [taskMasterList, tasks, customProjects]);
 
-    const tasksForSelectedProject = useMemo(() => {
-        if (!createProjectName) return [];
-        return taskMasterList.filter((t) => t.project_name === createProjectName);
-    }, [taskMasterList, createProjectName]);
+    const handleDurationChange = () => {
+        const h = Number(createForm.getFieldValue("allotted_hours") || 0);
+        const m = Number(createForm.getFieldValue("allotted_minutes") || 0);
+        const totalMinutes = h * 60 + m;
+
+        if (totalMinutes > 0) {
+            const startDate = createForm.getFieldValue("start_date") || dayjs();
+            if (!createForm.getFieldValue("start_date")) {
+                createForm.setFieldsValue({ start_date: startDate });
+            }
+            const targetDateTime = startDate.add(totalMinutes, "minute");
+            createForm.setFieldsValue({
+                due_date: targetDateTime,
+                due_time: targetDateTime,
+            });
+        }
+    };
 
     // ── Create + assign in one shot (or create the recurring rule when
     // "Repeats Daily" is checked) — backend attributes it to
@@ -422,6 +437,15 @@ export default function TL_Create_Task() {
             return;
         }
 
+        const hours = Number(values.allotted_hours || 0);
+        const minutes = Number(values.allotted_minutes || 0);
+        const totalMinutes = hours * 60 + minutes;
+        if (totalMinutes <= 0) {
+            message.error("Please enter allotted time in hours or minutes.");
+            return;
+        }
+        const allottedTime = Math.round((totalMinutes / 60) * 100) / 100;
+
         setCreating(true);
         try {
             const url = isDaily
@@ -435,7 +459,7 @@ export default function TL_Create_Task() {
                     task_details: values.task_details,
                     ...(assigneeType === "admin" ? { assigned_to_admin: values.assigned_to } : { assigned_to: values.assigned_to }),
                     priority: values.priority,
-                    allotted_time: values.allotted_time,
+                    allotted_time: allottedTime,
                     start_date: values.recurring_start_date.format("YYYY-MM-DD"),
                     end_date: values.recurring_end_date
                         ? values.recurring_end_date.format("YYYY-MM-DD")
@@ -450,7 +474,8 @@ export default function TL_Create_Task() {
                     priority: values.priority,
                     start_date: values.start_date ? values.start_date.format("YYYY-MM-DD") : null,
                     due_date: values.due_date ? values.due_date.format("YYYY-MM-DD") : null,
-                    allotted_time: values.allotted_time,
+                    due_time: values.due_time ? values.due_time.format("HH:mm:ss") : null, // <-- ADD THIS
+                    allotted_time: allottedTime,
                 };
 
             const res = await fetch(url, {
@@ -743,14 +768,21 @@ export default function TL_Create_Task() {
             ),
         },
         {
-            title: "Due Date",
+            title: "Due Date & Deadline",
             dataIndex: "due_date",
             key: "due_date",
-            width: 110,
-            render: (v: string | null) => (
-                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                    {v ? dayjs(v).format("DD MMM YYYY") : "—"}
-                </span>
+            width: 150,
+            render: (_: any, record: Task) => (
+                <div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                        {record.due_date ? dayjs(record.due_date).format("DD MMM YYYY") : "—"}
+                    </div>
+                    {record.due_time && (
+                        <div style={{ fontSize: 11, color: "var(--red, #e11d48)", fontWeight: 600, marginTop: 2 }}>
+                            by {dayjs(`1970-01-01T${record.due_time}`).format("hh:mm A")}
+                        </div>
+                    )}
+                </div>
             ),
         },
         {
@@ -860,13 +892,44 @@ export default function TL_Create_Task() {
                         Tasks you created — assign to your team or take one yourself
                     </p>
                 </div>
-                <Button onClick={openCreate} icon={<PlusOutlined />}
-                    style={{
-                        borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff",
-                        fontSize: 12, fontWeight: 700, padding: "8px 16px", display: "flex", alignItems: "center", gap: 6,
-                    }}>
-                    Create Task
-                </Button>
+                <div style={{ display: "flex", gap: 10 }}>
+                    <Button
+                        onClick={() => setBulkUploadOpen(true)}
+                        icon={<UploadOutlined />}
+                        style={{
+                            borderRadius: 9,
+                            border: "1px solid var(--border)",
+                            background: "var(--bg-card)",
+                            color: "var(--text-primary)",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            padding: "8px 16px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                        }}
+                    >
+                        Bulk Upload
+                    </Button>
+                    <Button
+                        onClick={openCreate}
+                        icon={<PlusOutlined />}
+                        style={{
+                            borderRadius: 9,
+                            border: "none",
+                            background: "var(--accent)",
+                            color: "#fff",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            padding: "8px 16px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                        }}
+                    >
+                        Create Task
+                    </Button>
+                </div>
             </div>
 
             <div className="db-stat-grid">
@@ -968,10 +1031,6 @@ export default function TL_Create_Task() {
                             showSearch
                             optionFilterProp="label"
                             options={projectNameOptions}
-                            onChange={(value) => {
-                                setCreateProjectName(value);
-                                createForm.setFieldsValue({ task_name: undefined, allotted_time: undefined });
-                            }}
                             dropdownRender={(menu) => (
                                 <>
                                     {menu}
@@ -1002,43 +1061,7 @@ export default function TL_Create_Task() {
                     </Form.Item>
 
                     <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
-                        <Select
-                            placeholder={createProjectName ? "Select a task from the catalog" : "Select a project first"}
-                            disabled={!createProjectName}
-                            showSearch
-                            optionFilterProp="label"
-                            options={tasksForSelectedProject.map((t) => ({ value: t.task_name, label: t.label }))}
-                            onChange={(value) => {
-                                const template = tasksForSelectedProject.find((t) => t.task_name === value);
-                                if (template) handleTaskMasterSelect(template);
-                            }}
-                            dropdownRender={(menu) => (
-                                <>
-                                    {menu}
-                                    <div
-                                        style={{
-                                            padding: "8px 12px",
-                                            borderTop: "1px solid #f0f0f0",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: 8,
-                                            color: "#1677ff",
-                                            fontWeight: 600,
-                                            cursor: "pointer",
-                                            background: "#fafafa",
-                                        }}
-                                        onMouseDown={(e) => e.preventDefault()} // Prevents dropdown from closing before click registers
-                                        onClick={() => {
-                                            setTaskMasterPrefillProject(createProjectName);
-                                            setAddTaskMasterOpen(true);
-                                        }}
-                                    >
-                                        <PlusOutlined style={{ fontSize: 13, color: "#1677ff" }} />
-                                        <span>Add New Task</span>
-                                    </div>
-                                </>
-                            )}
-                        />
+                        <Input placeholder="Enter task name" />
                     </Form.Item>
                     <Form.Item
                         label="Task Details"
@@ -1144,24 +1167,53 @@ export default function TL_Create_Task() {
                         </Form.Item>
 
                         <Form.Item
-                            label="Allotted Time (hours)"
-                            name="allotted_time"
-                            rules={[{ required: true, message: "Required" }]}
+                            label="Allotted Time"
+                            required
                         >
-                            <InputNumber
-                                style={{ width: "100%" }}
-                                min={0.5}
-                                step={0.5}
-                                placeholder="e.g. 8"
-                                onChange={(val) => {
-                                    const startDate = createForm.getFieldValue("start_date") || dayjs();
-                                    if (startDate && val) {
-                                        createForm.setFieldsValue({
-                                            due_date: startDate.add(Number(val), "hour"),
-                                        });
-                                    }
-                                }}
-                            />
+                            <div style={{ display: "flex", gap: 8 }}>
+                                <Form.Item
+                                    name="allotted_hours"
+                                    noStyle
+                                    rules={[
+                                        ({ getFieldValue }) => ({
+                                            validator() {
+                                                const h = getFieldValue("allotted_hours");
+                                                const m = getFieldValue("allotted_minutes");
+                                                if (
+                                                    (h === undefined || h === null || h === "") &&
+                                                    (m === undefined || m === null || m === "")
+                                                ) {
+                                                    return Promise.reject(new Error("Required"));
+                                                }
+                                                if (Number(h || 0) === 0 && Number(m || 0) === 0) {
+                                                    return Promise.reject(new Error("Must be > 0"));
+                                                }
+                                                return Promise.resolve();
+                                            },
+                                        }),
+                                    ]}
+                                >
+                                    <InputNumber
+                                        style={{ width: "50%" }}
+                                        min={0}
+                                        step={1}
+                                        placeholder="0"
+                                        addonAfter="hrs"
+                                        onChange={handleDurationChange}
+                                    />
+                                </Form.Item>
+                                <Form.Item name="allotted_minutes" noStyle>
+                                    <InputNumber
+                                        style={{ width: "50%" }}
+                                        min={0}
+                                        max={59}
+                                        step={5}
+                                        placeholder="0"
+                                        addonAfter="mins"
+                                        onChange={handleDurationChange}
+                                    />
+                                </Form.Item>
+                            </div>
                         </Form.Item>
                     </div>
 
@@ -1181,10 +1233,14 @@ export default function TL_Create_Task() {
                                     format="DD MMM YYYY"
                                     onChange={(date) => {
                                         if (date) {
-                                            const hours = createForm.getFieldValue("allotted_time");
-                                            if (hours) {
+                                            const h = Number(createForm.getFieldValue("allotted_hours") || 0);
+                                            const m = Number(createForm.getFieldValue("allotted_minutes") || 0);
+                                            const totalMinutes = h * 60 + m;
+                                            if (totalMinutes > 0) {
+                                                const target = date.add(totalMinutes, "minute");
                                                 createForm.setFieldsValue({
-                                                    due_date: date.add(Number(hours), "hour"),
+                                                    due_date: target,
+                                                    due_time: target,
                                                 });
                                             } else {
                                                 createForm.setFieldsValue({
@@ -1202,6 +1258,18 @@ export default function TL_Create_Task() {
                                 rules={[{ required: true, message: "Required" }]}
                             >
                                 <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
+                            </Form.Item>
+                            <Form.Item
+                                label="Deadline Time"
+                                name="due_time"
+                                rules={[{ required: false }]}
+                            >
+                                <TimePicker
+                                    style={{ width: "100%" }}
+                                    format="hh:mm A"
+                                    use12Hours
+                                    placeholder="e.g. 03:00 PM"
+                                />
                             </Form.Item>
                         </div>
                     )}
@@ -1375,16 +1443,26 @@ export default function TL_Create_Task() {
                 onSaved={fetchTaskMaster}
                 prefillProjectName={taskMasterPrefillProject}
                 onCreated={(created) => {
-                    const startDate = createForm.getFieldValue("start_date") || dayjs();
-                    const dueDate = startDate.add(Number(created.default_hours), "hour");
-                    createForm.setFieldsValue({
-                        project_name: created.project_name,
-                        task_name: created.task_name,
-                        allotted_time: created.default_hours,
-                        ...(isDaily ? {} : { due_date: dueDate }),
+                    const projName = typeof created === "string" ? created : created?.project_name;
+                    if (!projName) return;
+                    setCustomProjects((prev) => {
+                        if (prev.includes(projName)) return prev;
+                        const updated = [...prev, projName];
+                        localStorage.setItem("custom_projects", JSON.stringify(updated));
+                        return updated;
                     });
-                    setCreateProjectName(created.project_name);
+                    createForm.setFieldsValue({
+                        project_name: projName,
+                    });
                 }}
+            />
+            <BulkUploadTasksModal
+                open={bulkUploadOpen}
+                onClose={() => setBulkUploadOpen(false)}
+                onSuccess={fetchTasks}
+                departments={departments}
+                employees={employees}
+                admins={admins}
             />
         </div>
     );

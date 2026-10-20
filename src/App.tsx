@@ -34,6 +34,10 @@ import Upcoming_Scheduled_Tasks_TL from "./components/employee/tasks/Upcoming_Sc
 import My_Upcoming_Task_Admin from "./components/admin/tasks/My_Tasks/My_Upcoming_Task_Admin";
 import Employee_Upcoming_Tasks from "./components/employee/tasks/Employee_Upcoming_Tasks";
 import Completed_Task_Team from "./components/employee/tasks/Completed_Task_Team";
+import Attendance_Admin from "./components/admin/attendance/Attendance_Admin";
+import Attendance_Employee from "./components/employee/attendance/Attendance_Employee";
+import EmployeeRequests from "./components/requests/EmployeeRequests";
+import AdminRequests from "./components/requests/AdminRequests";
 
 
 // Shared shell: Sidebar on the left, page content on the right.
@@ -72,6 +76,8 @@ function App() {
           <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
             <Route element={<DashboardLayout role="admin" />}>
               <Route path="/admin/dashboard" element={<Admin_Dashboard />} />
+              <Route path="/admin/attendance" element={<Attendance_Admin />} />
+              <Route path="/admin/requests" element={<AdminRequests />} />
               <Route path="/admin/my_tasks" element={<My_Task_Admin />} />
               <Route path="/admin/my_upcoming_tasks" element={<My_Upcoming_Task_Admin />} /> {/* <-- ADD THIS */}
               <Route path="/admin/all_tasks" element={<All_Task_Admin />} />
@@ -98,6 +104,8 @@ function App() {
           <Route element={<ProtectedRoute allowedRoles={["employee"]} />}>
             <Route element={<DashboardLayout role="employee" />}>
               <Route path="/employee/dashboard" element={<Employee_Dashboard />} />
+              <Route path="/employee/attendance" element={<Attendance_Employee />} />
+              <Route path="/employee/requests" element={<EmployeeRequests />} />
               <Route path="/employee/all_tasks" element={<All_Task_Employee />} />
               <Route path="/employee/my_upcoming_tasks" element={<Employee_Upcoming_Tasks />} /> {/* <-- ADD THIS */}
               <Route path="/employee/completed_tasks" element={<Completed_Tasks_Employee />} />

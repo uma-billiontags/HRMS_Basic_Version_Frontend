@@ -249,7 +249,7 @@ export default function My_Upcoming_Task_Admin() {
                         display: "flex", alignItems: "center", gap: 8,
                     }}>
                         <CalendarOutlined />
-                        My Upcoming Tasks
+                        Upcoming Tasks
                     </h1>
                     <p style={{
                         fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",

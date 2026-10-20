@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Table, Button, Input, Select, message, Image } from "antd";
-import { SearchOutlined, ReloadOutlined, CheckCircleOutlined, LinkOutlined  } from "@ant-design/icons";
+import { SearchOutlined, ReloadOutlined, CheckCircleOutlined, LinkOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 
@@ -22,6 +22,7 @@ type TaskStatus = "submitted" | "resubmitted" | "completed";
 interface CompletedTask {
     id: number;
     task_id: string;
+    sub_task_id: string | null;
     project_name: string | null;
     task_name: string;
     task_details: string;
@@ -138,7 +139,7 @@ export default function Completed_Tasks_Employee() {
             if (priorityFilter && t.priority !== priorityFilter) return false;
             if (search.trim()) {
                 const q = search.toLowerCase();
-                if (![t.task_id, t.project_name, t.task_name, t.department_name].some((f) => f?.toLowerCase().includes(q))) return false;
+                if (![t.task_id, t.sub_task_id, t.project_name, t.task_name, t.department_name].some((f) => f?.toLowerCase().includes(q))) return false;
             }
             return true;
         });
@@ -203,6 +204,19 @@ export default function Completed_Tasks_Employee() {
                 }}>
                     {v}
                 </span>
+            ),
+        },
+        {
+            title: "Sub Task ID",
+            dataIndex: "sub_task_id",
+            key: "sub_task_id",
+            width: 100,
+            render: (_: unknown, record: CompletedTask) => (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", background: "var(--green-bg)", border: "1px solid var(--green)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", width: "fit-content" }}>
+                        {record.sub_task_id ? record.sub_task_id : "—"}
+                    </span>
+                </div>
             ),
         },
         {
@@ -322,16 +336,16 @@ export default function Completed_Tasks_Employee() {
             },
         },
         {
-    title: "Task Sheet Link",
-    dataIndex: "task_sheet_link",
-    key: "task_sheet_link",
-    width: 140,
-    render: (v: string) => v ? (
-        <a href={v} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, display: "flex", alignItems: "center", gap: 4 }}>
-            <LinkOutlined /> Open
-        </a>
-    ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
-},
+            title: "Task Sheet Link",
+            dataIndex: "task_sheet_link",
+            key: "task_sheet_link",
+            width: 140,
+            render: (v: string) => v ? (
+                <a href={v} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, display: "flex", alignItems: "center", gap: 4 }}>
+                    <LinkOutlined /> Open
+                </a>
+            ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
+        },
         {
             title: "Attachments",
             dataIndex: "attachments",
@@ -355,19 +369,19 @@ export default function Completed_Tasks_Employee() {
                 ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>,
         },
         {
-    title: "Employee Remarks",
-    dataIndex: "employee_remarks",
-    key: "employee_remarks",
-    width: 160,
-    render: (v: string) => (
-        <div style={{
-            fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 160,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }} title={v}>
-            {v || "—"}
-        </div>
-    ),
-},
+            title: "Employee Remarks",
+            dataIndex: "employee_remarks",
+            key: "employee_remarks",
+            width: 160,
+            render: (v: string) => (
+                <div style={{
+                    fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 160,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }} title={v}>
+                    {v || "—"}
+                </div>
+            ),
+        },
         {
             title: "Admin Remarks",
             dataIndex: "admin_remarks",

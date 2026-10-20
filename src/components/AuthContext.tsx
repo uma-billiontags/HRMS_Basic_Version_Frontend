@@ -10,6 +10,7 @@ export type UserRole = "admin" | "employee";
 
 interface AuthUser {
   name: string;
+  email: string;
   role: UserRole;
   token: string;
   isTL: boolean;   // NEW
@@ -68,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const authUser: AuthUser = {
         name: data.name,
+        email: me?.email ?? email,
         role: data.role,
         token: data.token,
         isTL: me?.is_tl ?? false,

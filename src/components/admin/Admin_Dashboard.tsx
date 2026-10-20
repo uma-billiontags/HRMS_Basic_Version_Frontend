@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from "react";
 import { Button, message, Spin } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { useAuth } from "../AuthContext"; // adjust path to match your project
-// import EmployeeRatingTrends from "./EmployeeRatingTrends"; // adjust path to match your project
+import WorkTimelineChart from "../common/WorkTimelineChart";
+import WeeklyTaskAllocationChart from "../common/WeeklyTaskAllocationChart";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -45,6 +46,11 @@ interface Summary {
     overdue: number;
     total_hours: number;
     avg_rating: number | null;
+    monthly_assigned_hours?: number;
+    monthly_working_hours?: number;
+    monthly_working_days?: number;
+    monthly_capacity_percentage?: number;
+    month_name?: string;
 }
 
 interface ByStatusRow {
@@ -138,8 +144,30 @@ export default function Admin_Dashboard() {
                     <StatCard label="In Progress" value={inProgressCount} changeLabel="Currently active" changeType="up" />
                     <StatCard label="Overdue Tasks" value={overdueCount} changeLabel="Past due date" changeType={overdueCount > 0 ? "down" : "neutral"} />
                     <StatCard label="Review Pending" value={pendingReviewCount} changeLabel="Awaiting your decision" changeType={pendingReviewCount > 0 ? "down" : "neutral"} />
+                    <StatCard
+                        label="Monthly Task Assigned"
+                        value={`${data?.summary.monthly_assigned_hours ?? 0} / ${data?.summary.monthly_working_hours ?? 216} hrs`}
+                        changeLabel={`${data?.summary.monthly_working_days ?? 27} workdays @ 8h (${data?.summary.monthly_capacity_percentage ?? 0}%)`}
+                        changeType="neutral"
+                    />
+                    <StatCard
+                        label="Monthly Capacity"
+                        value={`${data?.summary.monthly_working_hours ?? 216} hrs`}
+                        changeLabel="6 days working (Mon–Sat, Sun off)"
+                        changeType="neutral"
+                    />
                     <StatCard label="Overdue %" value={`${overduePercentage}%`} changeLabel="Of all tracked tasks" changeType={overduePercentage > 0 ? "down" : "neutral"} />
                     <StatCard label="Completed %" value={`${completedPercentage}%`} changeLabel="Of all tracked tasks" changeType="up" />
+                </div>
+
+                {/* ── Weekly Task Allocation Chart (Assigned Hours vs 8h Daily Capacity) ── */}
+                <div style={{ marginTop: 22 }}>
+                    <WeeklyTaskAllocationChart role="admin" />
+                </div>
+
+                {/* ── Daily Work & Break Timeline Chart ── */}
+                <div style={{ marginTop: 22 }}>
+                    <WorkTimelineChart role="admin" />
                 </div>
             </Spin>
         </div>

@@ -24,6 +24,7 @@ type TaskStatus =
 interface ReworkTask {
     id: number;
     task_id: string;
+    sub_task_id: string | null;
     task_name: string;
     task_details: string;
     department_name: string | null;
@@ -152,7 +153,7 @@ export default function Rework_Tasks() {
             if (priorityFilter && t.priority !== priorityFilter) return false;
             if (search.trim()) {
                 const q = search.toLowerCase();
-                const haystack = [t.task_id, t.task_name, t.task_details, t.assigned_to_name, t.department_name];
+                const haystack = [t.task_id, t.sub_task_id, t.task_name, t.task_details, t.assigned_to_name, t.department_name];
                 if (!haystack.some((f) => f?.toLowerCase().includes(q))) return false;
             }
             return true;
@@ -174,6 +175,19 @@ export default function Rework_Tasks() {
             width: 100,
             render: (v: string) => (
                 <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)", border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", }}>{v}</span>
+            ),
+        },
+        {
+            title: "Sub Task ID",
+            dataIndex: "sub_task_id",
+            key: "sub_task_id",
+            width: 100,
+            render: (_: unknown, record: ReworkTask) => (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", background: "var(--green-bg)", border: "1px solid var(--green)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", width: "fit-content" }}>
+                        {record.sub_task_id ? record.sub_task_id : "—"}
+                    </span>
+                </div>
             ),
         },
         {

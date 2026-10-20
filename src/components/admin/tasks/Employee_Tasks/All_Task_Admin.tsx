@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Table, Button, Input, Modal, Select, Form, message, DatePicker, InputNumber, Tag, Dropdown, Checkbox } from "antd";
+import { Table, Button, Input, Modal, Select, Form, message, DatePicker, TimePicker, InputNumber, Tag, Dropdown, Checkbox } from "antd";
 import {
     SearchOutlined, ReloadOutlined, PlusOutlined, UserSwitchOutlined,
     FileTextOutlined, PauseCircleOutlined, PlayCircleOutlined,
@@ -9,6 +9,8 @@ import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import TaskMasterAddModal from "./TaskMasterAddModal";
+import BulkUploadTasksModal from "./BulkUploadTasksModal";
+import { UploadOutlined } from "@ant-design/icons";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -46,6 +48,7 @@ type TaskStatus =
 interface Task {
     id: number;
     task_id: string;
+    sub_task_id?: string; // <-- Add this
     project_name: string;          // ← NEW
     task_name: string;
     task_details: string;
@@ -56,6 +59,7 @@ interface Task {
     assigned_by_name: string | null;
     priority: string | null;
     due_date: string | null;
+    due_time?: string | null;  // <-- ADD THIS
     allotted_time: number | null;
     task_status: TaskStatus;
     assigned_date: string;
@@ -230,8 +234,17 @@ export default function All_Task_Admin() {
 
     const [taskMasterList, setTaskMasterList] = useState<TaskMasterOption[]>([]);
 
-    const [createProjectName, setCreateProjectName] = useState<string | undefined>(undefined);
     const [taskMasterPrefillProject, setTaskMasterPrefillProject] = useState<string | undefined>(undefined);
+    const [customProjects, setCustomProjects] = useState<string[]>(() => {
+        try {
+            const saved = localStorage.getItem("custom_projects");
+            return saved ? JSON.parse(saved) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
     const fetchTasks = useCallback(() => {
         setLoading(true);
@@ -297,15 +310,6 @@ export default function All_Task_Admin() {
         fetchTaskMaster();
     }, [fetchTasks, fetchDepartments, fetchEmployees, fetchPriorities, fetchTaskMaster]);
 
-    const handleTaskMasterSelect = (template: TaskMasterOption) => {
-        const startDate = createForm.getFieldValue("start_date") || dayjs();
-        createForm.setFieldsValue({
-            task_name: template.task_name,
-            allotted_time: template.default_hours,
-            ...(isDaily ? {} : { due_date: startDate.add(Number(template.default_hours), "hour") }),
-        });
-    };
-
     const totalTasks = tasks.length;
     const inProgressTasks = tasks.filter((t) => t.task_status === "in_progress").length;
     const onHoldTasks = tasks.filter((t) => t.task_status === "on_hold").length;
@@ -318,7 +322,7 @@ export default function All_Task_Admin() {
             if (search.trim()) {
                 const q = search.toLowerCase();
                 const haystack = [
-                    t.task_id, t.project_name, t.task_name, t.task_details,
+                    t.task_id, t.sub_task_id, t.project_name, t.task_name, t.task_details,
                     t.assigned_to_name, t.department_name,
                 ];
                 if (!haystack.some((f) => f?.toLowerCase().includes(q))) return false;
@@ -333,7 +337,6 @@ export default function All_Task_Admin() {
             start_date: dayjs(),
         });
         setCreateDeptId(undefined);
-        setCreateProjectName(undefined);
         setIsDaily(false);
         setSelectedWeekdays(DEFAULT_WEEKDAYS);
         setCreateOpen(true);
@@ -347,14 +350,29 @@ export default function All_Task_Admin() {
     const employeesForCreateDept = employees.filter((e) => e.department === createDeptId);
 
     const projectNameOptions = useMemo(() => {
-        const names = Array.from(new Set(taskMasterList.map((t) => t.project_name).filter(Boolean)));
-        return names.map((n) => ({ value: n, label: n }));
-    }, [taskMasterList]);
+        const fromCatalog = taskMasterList.map((t) => t.project_name);
+        const fromTasks = tasks.map((t) => t.project_name);
+        const allNames = Array.from(new Set([...fromCatalog, ...fromTasks, ...customProjects].filter(Boolean)));
+        return allNames.map((n) => ({ value: n, label: n }));
+    }, [taskMasterList, tasks, customProjects]);
 
-    const tasksForSelectedProject = useMemo(() => {
-        if (!createProjectName) return [];
-        return taskMasterList.filter((t) => t.project_name === createProjectName);
-    }, [taskMasterList, createProjectName]);
+    const handleDurationChange = () => {
+        const h = Number(createForm.getFieldValue("allotted_hours") || 0);
+        const m = Number(createForm.getFieldValue("allotted_minutes") || 0);
+        const totalMinutes = h * 60 + m;
+
+        if (totalMinutes > 0) {
+            const startDate = createForm.getFieldValue("start_date") || dayjs();
+            if (!createForm.getFieldValue("start_date")) {
+                createForm.setFieldsValue({ start_date: startDate });
+            }
+            const targetDateTime = startDate.add(totalMinutes, "minute");
+            createForm.setFieldsValue({
+                due_date: targetDateTime,
+                due_time: targetDateTime,
+            });
+        }
+    };
 
     const handleCreate = async () => {
         let values;
@@ -367,6 +385,16 @@ export default function All_Task_Admin() {
             message.error("Select at least one day of the week.");
             return;
         }
+
+        const hours = Number(values.allotted_hours || 0);
+        const minutes = Number(values.allotted_minutes || 0);
+        const totalMinutes = hours * 60 + minutes;
+        if (totalMinutes <= 0) {
+            message.error("Please enter allotted time in hours or minutes.");
+            return;
+        }
+        const allottedTime = Math.round((totalMinutes / 60) * 100) / 100;
+
         setCreating(true);
         try {
             const url = isDaily
@@ -380,7 +408,7 @@ export default function All_Task_Admin() {
                     task_details: values.task_details,
                     assigned_to: values.assigned_to,
                     priority: values.priority,
-                    allotted_time: values.allotted_time,
+                    allotted_time: allottedTime,
                     start_date: values.recurring_start_date.format("YYYY-MM-DD"),
                     end_date: values.recurring_end_date
                         ? values.recurring_end_date.format("YYYY-MM-DD")
@@ -393,9 +421,10 @@ export default function All_Task_Admin() {
                     task_details: values.task_details,
                     assigned_to: values.assigned_to,
                     priority: values.priority,
-                    start_date: values.start_date ? values.start_date.format("YYYY-MM-DD") : null, // <-- ADD THIS
+                    start_date: values.start_date ? values.start_date.format("YYYY-MM-DD") : null,
                     due_date: values.due_date ? values.due_date.format("YYYY-MM-DD") : null,
-                    allotted_time: values.allotted_time,
+                    due_time: values.due_time ? values.due_time.format("HH:mm:ss") : null,
+                    allotted_time: allottedTime,
                 };
 
             const res = await fetch(url, {
@@ -426,6 +455,7 @@ export default function All_Task_Admin() {
             assigned_to: record.assigned_to ?? undefined,
             priority: record.priority ?? undefined,
             due_date: record.due_date ? dayjs(record.due_date) : undefined,
+            due_time: record.due_time ? dayjs(`1970-01-01T${record.due_time}`) : undefined, // <-- ADD THIS
             allotted_time: record.allotted_time ?? undefined,
         });
         setAssignOpen(true);
@@ -456,6 +486,7 @@ export default function All_Task_Admin() {
                     assigned_to: values.assigned_to,
                     priority: values.priority,
                     due_date: values.due_date ? values.due_date.format("YYYY-MM-DD") : null,
+                    due_time: values.due_time ? values.due_time.format("HH:mm:ss") : null, // <-- ADD THIS
                     allotted_time: values.allotted_time,
                 }),
             });
@@ -548,7 +579,20 @@ export default function All_Task_Admin() {
             key: "task_id",
             width: 100,
             render: (v: string) => (
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)", border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", }}>{v}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--blue)", background: "var(--blue-bg)", border: "1px solid var(--blue)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", width: "fit-content" }}>{v}</span>
+            ),
+        },
+        {
+            title: "Sub Task ID",
+            dataIndex: "sub_task_id",
+            key: "sub_task_id",
+            width: 100,
+            render: (_: unknown, record: Task) => (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", background: "var(--green-bg)", border: "1px solid var(--green)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", width: "fit-content" }}>
+                        {record.sub_task_id ? record.sub_task_id : "—"}
+                    </span>
+                </div>
             ),
         },
         {
@@ -642,14 +686,21 @@ export default function All_Task_Admin() {
             ),
         },
         {
-            title: "Due Date",
+            title: "Due Date & Deadline",
             dataIndex: "due_date",
             key: "due_date",
-            width: 110,
-            render: (v: string | null) => (
-                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                    {v ? dayjs(v).format("DD MMM YYYY") : "—"}
-                </span>
+            width: 150,
+            render: (_: any, record: Task) => (
+                <div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                        {record.due_date ? dayjs(record.due_date).format("DD MMM YYYY") : "—"}
+                    </div>
+                    {record.due_time && (
+                        <div style={{ fontSize: 11, color: "var(--red, #e11d48)", fontWeight: 600, marginTop: 2 }}>
+                            by {dayjs(`1970-01-01T${record.due_time}`).format("hh:mm A")}
+                        </div>
+                    )}
+                </div>
             ),
         },
         {
@@ -754,13 +805,35 @@ export default function All_Task_Admin() {
                         All tasks — create, assign, and track every task's status
                     </p>
                 </div>
-                <Button onClick={openCreate} icon={<PlusOutlined />}
-                    style={{
-                        borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff",
-                        fontSize: 12, fontWeight: 700, padding: "8px 16px", display: "flex", alignItems: "center", gap: 6,
-                    }}>
-                    Create Task
-                </Button>
+
+                <div style={{ display: "flex", gap: 10 }}>
+                    <Button
+                        onClick={() => setBulkUploadOpen(true)}
+                        icon={<UploadOutlined />}
+                        style={{
+                            borderRadius: 9,
+                            border: "1px solid var(--border)",
+                            background: "#fff",
+                            color: "var(--text-primary)",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            padding: "8px 16px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                        }}
+                    >
+                        Bulk Upload
+                    </Button>
+
+                    <Button onClick={openCreate} icon={<PlusOutlined />}
+                        style={{
+                            borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff",
+                            fontSize: 12, fontWeight: 700, padding: "8px 16px", display: "flex", alignItems: "center", gap: 6,
+                        }}>
+                        Create Task
+                    </Button>
+                </div>
             </div>
 
             <div className="db-stat-grid">
@@ -856,10 +929,6 @@ export default function All_Task_Admin() {
                             showSearch
                             optionFilterProp="label"
                             options={projectNameOptions}
-                            onChange={(value) => {
-                                setCreateProjectName(value);
-                                createForm.setFieldsValue({ task_name: undefined, allotted_time: undefined });
-                            }}
                             dropdownRender={(menu) => (
                                 <>
                                     {menu}
@@ -890,43 +959,7 @@ export default function All_Task_Admin() {
                     </Form.Item>
 
                     <Form.Item label="Task Name" name="task_name" rules={[{ required: true, message: "Required" }]}>
-                        <Select
-                            placeholder={createProjectName ? "Select a task from the catalog" : "Select a project first"}
-                            disabled={!createProjectName}
-                            showSearch
-                            optionFilterProp="label"
-                            options={tasksForSelectedProject.map((t) => ({ value: t.task_name, label: t.label }))}
-                            onChange={(value) => {
-                                const template = tasksForSelectedProject.find((t) => t.task_name === value);
-                                if (template) handleTaskMasterSelect(template);
-                            }}
-                            dropdownRender={(menu) => (
-                                <>
-                                    {menu}
-                                    <div
-                                        style={{
-                                            padding: "8px 12px",
-                                            borderTop: "1px solid #f0f0f0",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: 8,
-                                            color: "#1677ff",
-                                            fontWeight: 600,
-                                            cursor: "pointer",
-                                            background: "#fafafa",
-                                        }}
-                                        onMouseDown={(e) => e.preventDefault()} // Prevents dropdown from closing before click registers
-                                        onClick={() => {
-                                            setTaskMasterPrefillProject(createProjectName);
-                                            setAddTaskMasterOpen(true);
-                                        }}
-                                    >
-                                        <PlusOutlined style={{ fontSize: 13, color: "#1677ff" }} />
-                                        <span>Add New Task</span>
-                                    </div>
-                                </>
-                            )}
-                        />
+                        <Input placeholder="Enter task name" />
                     </Form.Item>
 
                     <Form.Item
@@ -1008,24 +1041,53 @@ export default function All_Task_Admin() {
                         </Form.Item>
 
                         <Form.Item
-                            label="Allotted Time (hours)"
-                            name="allotted_time"
-                            rules={[{ required: true, message: "Required" }]}
+                            label="Allotted Time"
+                            required
                         >
-                            <InputNumber
-                                style={{ width: "100%" }}
-                                min={0.5}
-                                step={0.5}
-                                placeholder="e.g. 8"
-                                onChange={(val) => {
-                                    const startDate = createForm.getFieldValue("start_date") || dayjs();
-                                    if (startDate && val) {
-                                        createForm.setFieldsValue({
-                                            due_date: startDate.add(Number(val), "hour"),
-                                        });
-                                    }
-                                }}
-                            />
+                            <div style={{ display: "flex", gap: 8 }}>
+                                <Form.Item
+                                    name="allotted_hours"
+                                    noStyle
+                                    rules={[
+                                        ({ getFieldValue }) => ({
+                                            validator() {
+                                                const h = getFieldValue("allotted_hours");
+                                                const m = getFieldValue("allotted_minutes");
+                                                if (
+                                                    (h === undefined || h === null || h === "") &&
+                                                    (m === undefined || m === null || m === "")
+                                                ) {
+                                                    return Promise.reject(new Error("Required"));
+                                                }
+                                                if (Number(h || 0) === 0 && Number(m || 0) === 0) {
+                                                    return Promise.reject(new Error("Must be > 0"));
+                                                }
+                                                return Promise.resolve();
+                                            },
+                                        }),
+                                    ]}
+                                >
+                                    <InputNumber
+                                        style={{ width: "50%" }}
+                                        min={0}
+                                        step={1}
+                                        placeholder="0"
+                                        addonAfter="hrs"
+                                        onChange={handleDurationChange}
+                                    />
+                                </Form.Item>
+                                <Form.Item name="allotted_minutes" noStyle>
+                                    <InputNumber
+                                        style={{ width: "50%" }}
+                                        min={0}
+                                        max={59}
+                                        step={5}
+                                        placeholder="0"
+                                        addonAfter="mins"
+                                        onChange={handleDurationChange}
+                                    />
+                                </Form.Item>
+                            </div>
                         </Form.Item>
                     </div>
 
@@ -1041,10 +1103,14 @@ export default function All_Task_Admin() {
                                     format="DD MMM YYYY"
                                     onChange={(date) => {
                                         if (date) {
-                                            const hours = createForm.getFieldValue("allotted_time");
-                                            if (hours) {
+                                            const h = Number(createForm.getFieldValue("allotted_hours") || 0);
+                                            const m = Number(createForm.getFieldValue("allotted_minutes") || 0);
+                                            const totalMinutes = h * 60 + m;
+                                            if (totalMinutes > 0) {
+                                                const target = date.add(totalMinutes, "minute");
                                                 createForm.setFieldsValue({
-                                                    due_date: date.add(Number(hours), "hour"),
+                                                    due_date: target,
+                                                    due_time: target,
                                                 });
                                             } else {
                                                 createForm.setFieldsValue({
@@ -1062,6 +1128,18 @@ export default function All_Task_Admin() {
                                 rules={[{ required: true, message: "Required" }]}
                             >
                                 <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
+                            </Form.Item>
+                            <Form.Item
+                                label="Deadline Time"
+                                name="due_time"
+                                rules={[{ required: false }]}
+                            >
+                                <TimePicker
+                                    style={{ width: "100%" }}
+                                    format="hh:mm A"
+                                    use12Hours
+                                    placeholder="e.g. 03:00 PM"
+                                />
                             </Form.Item>
                         </div>
                     )}
@@ -1153,6 +1231,9 @@ export default function All_Task_Admin() {
                                     placeholder="e.g. 8"
                                 />
                             </Form.Item>
+                            <Form.Item label="Deadline Time" name="due_time">
+                                <TimePicker style={{ width: "100%" }} format="hh:mm A" use12Hours placeholder="e.g. 03:00 PM" />
+                            </Form.Item>
                         </Form>
                     </>
                 )}
@@ -1197,15 +1278,25 @@ export default function All_Task_Admin() {
                 onSaved={fetchTaskMaster}
                 prefillProjectName={taskMasterPrefillProject}
                 onCreated={(created) => {
-                    const dueDate = dayjs().add(Number(created.default_hours), "hour");
-                    createForm.setFieldsValue({
-                        project_name: created.project_name,
-                        task_name: created.task_name,
-                        allotted_time: created.default_hours,
-                        due_date: dueDate,
+                    const projName = typeof created === "string" ? created : created?.project_name;
+                    if (!projName) return;
+                    setCustomProjects((prev) => {
+                        if (prev.includes(projName)) return prev;
+                        const updated = [...prev, projName];
+                        localStorage.setItem("custom_projects", JSON.stringify(updated));
+                        return updated;
                     });
-                    setCreateProjectName(created.project_name);
+                    createForm.setFieldsValue({
+                        project_name: projName,
+                    });
                 }}
+            />
+            <BulkUploadTasksModal
+                open={bulkUploadOpen}
+                onClose={() => setBulkUploadOpen(false)}
+                onSuccess={fetchTasks}
+                departments={departments}
+                employees={employees}
             />
         </div>
     );

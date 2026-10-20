@@ -2,13 +2,15 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Table, Button, Input, Modal, Form, Tooltip, Select, message, Tag, Image } from "antd";
 import {
     SearchOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined,
-    CheckCircleOutlined, LinkOutlined, SortAscendingOutlined, SortDescendingOutlined
+    CheckCircleOutlined, LinkOutlined, SortAscendingOutlined, SortDescendingOutlined,
+    CoffeeOutlined
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { Upload } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import type { UploadFile } from "antd";
+import PauseTaskModal from "./PauseTaskModal";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -30,6 +32,7 @@ type TaskStatus =
 interface MyTask {
     id: number;
     task_id: string;
+    sub_task_id: string | null;
     project_name: string | null;
     task_name: string;
     task_details: string;
@@ -40,6 +43,7 @@ interface MyTask {
     priority: string | null;
     assigned_date: string;
     due_date: string | null;
+    due_time: string | null;  // <-- ADD THIS
     allotted_time: number | null;
     task_status: TaskStatus;
     total_time_taken: number;
@@ -54,6 +58,26 @@ interface MyTask {
     rework_count: number;
     has_active_session: boolean;
     attachments: { id: number; file: string; uploaded_at: string }[];
+}
+
+interface ActivePause {
+    id: number;
+    task: number;
+    task_name: string;
+    pause_type: "break" | "another_reason";
+    break_option: string;
+    break_duration_minutes: number | null;
+    reason: string;
+    start_time: string;
+}
+
+function formatBreakTime(remainingSecs: number): string {
+    const isOver = remainingSecs < 0;
+    const abs = Math.abs(remainingSecs);
+    const m = Math.floor(abs / 60);
+    const s = abs % 60;
+    const formatted = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    return isOver ? `${formatted} (Exceeded)` : `${formatted} remaining`;
 }
 
 interface Active_Task_EmployeeProps {
@@ -92,10 +116,8 @@ const PRIORITY_OPTIONS = [
 
 
 
-// Terminal states — days-to-go and rework/etc don't apply once work is over.
-// (completed tasks never actually reach this page anymore, but keeping it
-// here is harmless and keeps the component correct if scope is ever "all".)
-const TERMINAL_STATUSES: TaskStatus[] = ["completed", "cancelled"];
+// Terminal states — days-to-go and overdue don't apply once work is completed or submitted for review.
+const TERMINAL_STATUSES: TaskStatus[] = ["completed", "cancelled", "submitted", "under_review", "resubmitted"];
 
 function StatusTag({ status }: { status: TaskStatus }) {
     const meta = STATUS_META[status] ?? STATUS_META.not_started;
@@ -173,7 +195,7 @@ type ScopeFilter = "all" | "mine";
 
 export default function All_Task_Employee({
     forceScope,
-    pageTitle = "My Tasks",
+    pageTitle = "Assigned Tasks",
 }: Active_Task_EmployeeProps) {
     const [tasks, setTasks] = useState<MyTask[]>([]);
     const [loading, setLoading] = useState(true);
@@ -194,6 +216,12 @@ export default function All_Task_Employee({
     // Whether the employee has ANY active session right now (across all tasks) —
     // used to disable "Start" on every other task of THEIRS.
     const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
+    const [activePause, setActivePause] = useState<ActivePause | null>(null);
+    const [breakRemaining, setBreakRemaining] = useState<number>(0);
+
+    // Pause modal
+    const [pauseOpen, setPauseOpen] = useState(false);
+    const [pauseTarget, setPauseTarget] = useState<MyTask | null>(null);
 
     // Submit modal
     const [submitOpen, setSubmitOpen] = useState(false);
@@ -222,8 +250,8 @@ export default function All_Task_Employee({
             .then((r) => r.json())
             .then((d) => {
                 const all: MyTask[] = Array.isArray(d) ? d : d.results || [];
-                // Completed tasks live on Completed_Tasks_Employee now — never show them here.
-                setTasks(all.filter((t) => t.task_status !== "completed"));
+                // Completed, Submitted, and Under Review tasks should not show in Assigned Tasks UI
+                setTasks(all.filter((t) => !["completed", "submitted", "under_review", "resubmitted"].includes(t.task_status)));
             })
             .catch(() => message.error("Failed to load tasks"))
             .finally(() => setLoading(false));
@@ -232,9 +260,31 @@ export default function All_Task_Employee({
     const fetchActiveSession = useCallback(() => {
         fetch(`${BASE_URL}/api/tasks/my_active_session/`, { headers: { ...authHeaders() } })
             .then((r) => r.json())
-            .then((d) => setActiveTaskId(d?.task ?? null))
-            .catch(() => setActiveTaskId(null));
+            .then((d) => {
+                setActiveTaskId(d?.active ? d.task : null);
+                setActivePause(d?.active_pause ?? null);
+            })
+            .catch(() => {
+                setActiveTaskId(null);
+                setActivePause(null);
+            });
     }, []);
+
+    useEffect(() => {
+        if (!activePause) return;
+        const update = () => {
+            const passedSecs = dayjs().diff(dayjs(activePause.start_time), "second");
+            if (activePause.break_duration_minutes) {
+                const totalSecs = activePause.break_duration_minutes * 60;
+                setBreakRemaining(totalSecs - passedSecs);
+            } else {
+                setBreakRemaining(-passedSecs);
+            }
+        };
+        update();
+        const interval = window.setInterval(update, 1000);
+        return () => window.clearInterval(interval);
+    }, [activePause]);
 
     function isValidHttpUrl(str: string): boolean {
         try {
@@ -256,16 +306,32 @@ export default function All_Task_Employee({
     );
 
     const filtered = useMemo(() => {
-        return tasks.filter((t) => {
-            if (statusFilter && t.task_status !== statusFilter) return false;
-            if (priorityFilter && t.priority !== priorityFilter) return false;
-            if (search.trim()) {
-                const q = search.toLowerCase();
-                const haystack = [t.task_id, t.project_name, t.task_name, t.task_details, t.assigned_to_name];
-                if (!haystack.some((f) => f?.toLowerCase().includes(q))) return false;
-            }
-            return true;
-        });
+        return tasks
+            .filter((t) => {
+                if (statusFilter && t.task_status !== statusFilter) return false;
+                if (priorityFilter && t.priority !== priorityFilter) return false;
+                if (search.trim()) {
+                    const q = search.toLowerCase();
+                    const haystack = [t.task_id, t.sub_task_id, t.project_name, t.task_name, t.task_details, t.assigned_to_name];
+                    if (!haystack.some((f) => f?.toLowerCase().includes(q))) return false;
+                }
+                return true;
+            })
+            .sort((a, b) => {
+                if (!a.due_date && !b.due_date) return a.id - b.id;
+                if (!a.due_date) return 1;
+                if (!b.due_date) return -1;
+
+                // Combine due_date and due_time so 1:00 PM comes before 3:00 PM on the same date
+                const timeA = a.due_time || "23:59:59";
+                const timeB = b.due_time || "23:59:59";
+
+                const dateTimeA = dayjs(`${a.due_date} ${timeA}`).valueOf();
+                const dateTimeB = dayjs(`${b.due_date} ${timeB}`).valueOf();
+
+                const diff = dateTimeA - dateTimeB;
+                return diff !== 0 ? diff : a.id - b.id;
+            });
     }, [tasks, search, statusFilter, priorityFilter]);
 
     const myTasks = useMemo(() => tasks.filter(isMine), [tasks, isMine]);
@@ -375,7 +441,10 @@ export default function All_Task_Employee({
                 <div style={{ display: "flex", gap: 6 }}>
                     <Button
                         size="small" loading={busy} icon={<PauseCircleOutlined />}
-                        onClick={() => callTimerAction(task, "pause")}
+                        onClick={() => {
+                            setPauseTarget(task);
+                            setPauseOpen(true);
+                        }}
                         style={{ fontSize: 11, fontWeight: 600, borderRadius: 6 }}
                     >
                         Pause
@@ -394,8 +463,9 @@ export default function All_Task_Employee({
             );
         }
         if (task.task_status === "paused" || task.task_status === "rework_needed") {
+            const isThisTaskOnBreak = activePause !== null && activePause.task === task.id;
             return (
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <Tooltip title={anotherTaskActive ? "Pause or submit your active task first" : ""}>
                         <Button
                             size="small" loading={busy} disabled={anotherTaskActive}
@@ -405,6 +475,15 @@ export default function All_Task_Employee({
                             Resume
                         </Button>
                     </Tooltip>
+                    {isThisTaskOnBreak && (
+                        <Tag
+                            color={breakRemaining < 0 ? "error" : "warning"}
+                            icon={activePause?.pause_type === "break" ? <CoffeeOutlined /> : <PauseCircleOutlined />}
+                            style={{ margin: 0, fontWeight: 600, fontSize: 11, borderRadius: 6 }}
+                        >
+                            {activePause?.pause_type === "break" ? formatBreakTime(breakRemaining) : "Paused"}
+                        </Tag>
+                    )}
                     <Button
                         size="small" icon={<CheckCircleOutlined />} onClick={() => openSubmit(task)}
                         style={{
@@ -448,6 +527,19 @@ export default function All_Task_Employee({
             ),
         },
         {
+            title: "Sub Task ID",
+            dataIndex: "sub_task_id",
+            key: "sub_task_id",
+            width: 100,
+            render: (_: unknown, record: MyTask) => (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", background: "var(--green-bg)", border: "1px solid var(--green)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", width: "fit-content" }}>
+                        {record.sub_task_id ? record.sub_task_id : "—"}
+                    </span>
+                </div>
+            ),
+        },
+        {
             title: "Project Name",
             dataIndex: "project_name",
             key: "project_name",
@@ -462,13 +554,22 @@ export default function All_Task_Employee({
             title: "Task Name", dataIndex: "task_name", key: "task_name", width: 180, fixed: "left",
             render: (v: string) => <span style={{ fontSize: 12.5, fontWeight: 600 }}>{v}</span>,
         },
+
         {
-            title: "Task Details", dataIndex: "task_details", key: "task_details", width: 220,
+            title: "Task Details",
+            dataIndex: "task_details",
+            key: "task_details",
+            width: 280,
             render: (v: string) => (
-                <div style={{
-                    fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 220,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }} title={v}>
+                <div
+                    style={{
+                        fontSize: 11.5,
+                        color: "var(--text-secondary)",
+                        whiteSpace: "normal",
+                        wordBreak: "break-word",
+                        lineHeight: 1.4,
+                    }}
+                >
                     {v || "—"}
                 </div>
             ),
@@ -559,7 +660,7 @@ export default function All_Task_Employee({
             title: "Remaining/Over Time",
             dataIndex: "remaining_or_over_time",
             key: "remaining_or_over_time",
-            width: 130,
+            width: 150,
             render: (v: number) => (
                 <span className={v < 0 ? "td-down" : "td-up"} style={{ fontSize: 12 }}>
                     {v < 0 ? `${formatAllottedTime(Math.abs(v))} over` : formatAllottedTime(v)}
@@ -597,11 +698,21 @@ export default function All_Task_Employee({
             render: (v: string) => <span style={{ fontSize: 11.5 }}>{dayjs(v).format("DD MMM YYYY")}</span>,
         },
         {
-            title: "Due Date", dataIndex: "due_date", key: "due_date", width: 110,
-            render: (v: string | null) => (
-                <span style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>
-                    {v ? dayjs(v).format("DD MMM YYYY") : "—"}
-                </span>
+            title: "Due Date & Deadline",
+            dataIndex: "due_date",
+            key: "due_date",
+            width: 140,
+            render: (_: any, record: MyTask) => (
+                <div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>
+                        {record.due_date ? dayjs(record.due_date).format("DD MMM YYYY") : "—"}
+                    </div>
+                    {record.due_time && (
+                        <div style={{ fontSize: 11, color: "var(--red, #e11d48)", fontWeight: 600, marginTop: 2 }}>
+                            by {dayjs(`1970-01-01T${record.due_time}`).format("hh:mm A")}
+                        </div>
+                    )}
+                </div>
             ),
         },
         {
@@ -659,7 +770,7 @@ export default function All_Task_Employee({
             render: (v: string | null) => <span style={{ fontSize: 11.5 }}>{v ? dayjs(v).format("DD MMM, HH:mm") : "—"}</span>,
         },
         {
-            title: "Rework Count", dataIndex: "rework_count", key: "rework_count", width: 95,
+            title: "Rework Count", dataIndex: "rework_count", key: "rework_count", width: 120,
             render: (v: number) => <span className="td-num" style={{ fontSize: 12 }}>{v}</span>,
         },
         {
@@ -689,6 +800,70 @@ export default function All_Task_Employee({
                 </div>
             </div>
 
+            {activePause && (
+                <div style={{
+                    marginBottom: 18,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "14px 20px",
+                    borderRadius: 12,
+                    background: "#fffbeb",
+                    border: "1px solid #fde68a",
+                    borderLeft: "4px solid #d97706",
+                    boxShadow: "0 2px 8px rgba(217, 119, 6, 0.08)",
+                    flexWrap: "wrap",
+                    gap: 12,
+                }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <span style={{ color: "#d97706", display: "flex", fontSize: 24 }}>
+                            {activePause.pause_type === "break" ? <CoffeeOutlined /> : <PauseCircleOutlined />}
+                        </span>
+                        <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#d97706", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                {activePause.pause_type === "break"
+                                    ? `Currently on break (${activePause.break_duration_minutes || 30} mins)`
+                                    : "Currently paused"}
+                            </div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
+                                {activePause.task_name} <span style={{ fontSize: 12, fontWeight: 500, color: "#8c8c8c" }}>— {activePause.reason}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                        <span style={{
+                            fontSize: 22,
+                            fontWeight: 700,
+                            fontVariantNumeric: "tabular-nums",
+                            color: breakRemaining < 0 ? "var(--red, #cf1322)" : "#d97706",
+                        }}>
+                            {formatBreakTime(breakRemaining)}
+                        </span>
+                        <Button
+                            type="primary"
+                            loading={busyTaskId === activePause.task}
+                            onClick={() => {
+                                const t = tasks.find(x => x.id === activePause.task);
+                                if (t) {
+                                    callTimerAction(t, "resume");
+                                } else {
+                                    fetch(`${BASE_URL}/api/tasks/${activePause.task}/resume/`, {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json", ...authHeaders() },
+                                    }).then(() => {
+                                        fetchTasks();
+                                        fetchActiveSession();
+                                    });
+                                }
+                            }}
+                            style={{ fontSize: 12, fontWeight: 600, borderRadius: 8, background: "var(--accent)", border: "none" }}
+                        >
+                            Resume Task
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             <div className="db-stat-grid">
                 <StatCard label="Total Tasks" value={totalTasks} />
                 <StatCard label="In Progress" value={inProgress} />
@@ -716,7 +891,7 @@ export default function All_Task_Employee({
                     onChange={setStatusFilter}
                     style={{ width: 170 }}
                     options={Object.entries(STATUS_META)
-                        .filter(([value]) => value !== "completed")
+                        .filter(([value]) => !["completed", "submitted", "under_review", "resubmitted"].includes(value))
                         .map(([value, meta]) => ({ value, label: meta.label }))}
                 />
                 <Select
@@ -777,7 +952,6 @@ export default function All_Task_Employee({
                             label="Task Sheet Link"
                             name="task_sheet_link"
                             rules={[
-                                { required: true, message: "Please enter your task sheet link" },
                                 {
                                     validator: (_, value) => {
                                         if (!value || isValidHttpUrl(value)) return Promise.resolve();
@@ -815,6 +989,19 @@ export default function All_Task_Employee({
                     </Form>
                 )}
             </Modal>
+
+            <PauseTaskModal
+                open={pauseOpen}
+                task={pauseTarget}
+                onClose={() => {
+                    setPauseOpen(false);
+                    setPauseTarget(null);
+                }}
+                onSuccess={() => {
+                    fetchTasks();
+                    fetchActiveSession();
+                }}
+            />
         </div>
     );
 }

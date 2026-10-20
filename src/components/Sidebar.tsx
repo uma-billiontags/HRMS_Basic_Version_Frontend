@@ -13,8 +13,11 @@ import {
     ListChecks,
     UsersRound,
     CalendarDays, // <-- ADD THIS
+    CalendarCheck,
     FolderOpen,
     AlarmClock,
+    Mail,
+    Inbox,
     type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "./AuthContext";
@@ -38,9 +41,13 @@ const ADMIN_NAV: NavGroup[] = [
         items: [{ label: "Dashboard", icon: LayoutDashboard, to: "/admin/dashboard" }],
     },
     {
-        section: "MY TASKS",
+        section: "ATTENDANCE",
+        items: [{ label: "Attendance", icon: CalendarCheck, to: "/admin/attendance" }],
+    },
+    {
+        section: "TASKS",
         items: [
-            { label: "All Tasks", icon: LayoutDashboard, to: "/admin/my_tasks" },
+            { label: "Assigned Tasks", icon: LayoutDashboard, to: "/admin/my_tasks" },
             { label: "Upcoming Tasks", icon: CalendarDays, to: "/admin/my_upcoming_tasks" }, // <-- ADD THIS
         ],
     },
@@ -56,6 +63,10 @@ const ADMIN_NAV: NavGroup[] = [
             { label: "Completed Tasks", icon: CheckCircle2, to: "/admin/completed_tasks" },
             { label: "Cancel Tasks", icon: XCircle, to: "/admin/cancel_tasks" },
         ],
+    },
+    {
+        section: "REQUESTS",
+        items: [{ label: "Employee Requests", icon: Inbox, to: "/admin/requests" }],
     },
     // {
     //     section: "REQUESTS",
@@ -93,13 +104,21 @@ const EMPLOYEE_NAV: NavGroup[] = [
         items: [{ label: "Dashboard", icon: LayoutDashboard, to: "/employee/dashboard" }],
     },
     {
+        section: "ATTENDANCE",
+        items: [{ label: "Attendance", icon: CalendarCheck, to: "/employee/attendance" }],
+    },
+    {
         section: "TASKS",
         items: [
-            { label: "My Tasks", icon: ClipboardList, to: "/employee/all_tasks" },
+            { label: "Assigned Tasks", icon: ClipboardList, to: "/employee/all_tasks" },
             { label: "Upcoming Tasks", icon: CalendarDays, to: "/employee/my_upcoming_tasks" }, // <-- ADD THIS
             { label: "Completed Tasks", icon: CheckCircle2, to: "/employee/completed_tasks" },
         ],
 
+    },
+    {
+        section: "REQUESTS",
+        items: [{ label: "Create / My Requests", icon: Mail, to: "/employee/requests" }],
     },
     // {
     //     section: "REQUESTS",
@@ -120,13 +139,21 @@ const EMPLOYEE_NAV: NavGroup[] = [
 const TL_NAV: NavGroup[] = [
     { section: "OVERVIEW", items: [{ label: "Dashboard", icon: LayoutDashboard, to: "/employee/dashboard" }] },
     {
-        section: "MY TASKS",
+        section: "ATTENDANCE",
+        items: [{ label: "Attendance", icon: CalendarCheck, to: "/employee/attendance" }],
+    },
+    {
+        section: "TASKS",
         items: [
-            { label: "My Task", icon: ClipboardList, to: "/employee/all_tasks" },
-            { label: "My Upcoming Tasks", icon: CalendarDays, to: "/employee/my_upcoming_tasks" }, // <-- ADD THIS
+            { label: "Assigned Tasks", icon: ClipboardList, to: "/employee/all_tasks" },
+            { label: "Upcoming Tasks", icon: CalendarDays, to: "/employee/my_upcoming_tasks" }, // <-- ADD THIS
             { label: "Completed Tasks", icon: CheckCircle2, to: "/employee/completed_tasks" },
 
         ],
+    },
+    {
+        section: "REQUESTS",
+        items: [{ label: "Create / My Requests", icon: Mail, to: "/employee/requests" }],
     },
     {
         section: "EMPLOYEE TASKS",
@@ -169,63 +196,57 @@ export default function Sidebar({ role, userName, isTL = false }: SidebarProps) 
     return (
         <aside className="db-sidebar">
             {/* Logo */}
-            {/* Logo */}
-            <div className="db-logo" style={{ padding: "16px 14px 14px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    {/* White badge container for the logo */}
-                    <div
+            <div className="db-logo" style={{ padding: "8px 8px" }}>
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "#ffffff",
+                        borderRadius: 8,
+                        padding: "8px 14px",
+                        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
+                        width: "100%",
+                    }}
+                >
+                    <img
+                        src="/logo.png"
+                        alt="Billion tags"
                         style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            background: "#ffffff",
-                            borderRadius: 8,
-                            padding: "0px 2px",
-                            height: 38,
-                            minWidth: 50,
-                            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
-                            flexShrink: 0,
+                            width: "100%",
+                            height: "auto",
+                            maxHeight: 28,
+                            objectFit: "contain",
+                            display: "block",
                         }}
-                    >
-                        <img
-                            src="/logo.jpg"
-                            alt="Billion$"
-                            style={{
-                                height: 20,
-                                width: "auto",
-                                maxWidth: 80,
-                                objectFit: "contain",
-                                display: "block",
-                            }}
-                        />
-                    </div>
-
-                    {/* Text next to the logo */}
-                    <div>
-                        <div
-                            style={{
-                                fontSize: 15,
-                                fontWeight: 800,
-                                color: "var(--sb-text-bright)",
-                                letterSpacing: "0.02em",
-                                lineHeight: 1.2,
-                            }}
-                        >
-                            HRMS
-                        </div>
-                        <div
-                            style={{
-                                fontSize: 10,
-                                color: "var(--sb-text-dim)",
-                                marginTop: 3,
-                                fontWeight: 500,
-                            }}
-                        >
-                            {role === "admin" ? "Admin Portal" : isTL ? "Team Lead Portal" : "Employee Portal"}
-                        </div>
-                    </div>
+                    />
                 </div>
             </div>
+            {/* Logo */}
+            {/* <div
+                className="db-logo"
+                style={{
+                    background: "#ffffff",
+                    padding: "8px 8px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderBottom: "1px solid rgba(0, 0, 0, 0.08)",
+                    borderTopLeftRadius: "inherit",
+                }}
+            >
+                <img
+                    src="/logo.png"
+                    alt="Billion tags"
+                    style={{
+                        width: "100%",
+                        height: "auto",
+                        maxHeight: 28,
+                        objectFit: "contain",
+                        display: "block",
+                    }}
+                />
+            </div> */}
 
             {/* Nav */}
             <nav className="db-nav">

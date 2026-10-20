@@ -212,7 +212,7 @@ export default function Reports_Employee() {
             }}>
                 <div>
                     <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>
-                        My Report
+                        Reports
                     </h1>
                     <p style={{
                         fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",

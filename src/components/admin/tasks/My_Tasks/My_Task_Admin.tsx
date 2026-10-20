@@ -1,12 +1,14 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Table, Button, Input, Modal, Form, Tooltip, Select, message, Image, Upload } from "antd";
+import { Table, Button, Input, Modal, Form, Tooltip, Select, message, Image, Upload, Tag } from "antd";
 import {
     SearchOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined,
-    CheckCircleOutlined, LinkOutlined, UploadOutlined, SortAscendingOutlined, SortDescendingOutlined
+    CheckCircleOutlined, LinkOutlined, UploadOutlined, SortAscendingOutlined, SortDescendingOutlined,
+    CoffeeOutlined
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { UploadFile } from "antd";
 import dayjs from "dayjs";
+import PauseTaskModal from "../../../employee/tasks/PauseTaskModal";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
@@ -28,6 +30,7 @@ type TaskStatus =
 interface AdminTask {
     id: number;
     task_id: string;
+    sub_task_id: string | null;
     project_name: string | null;
     task_name: string;
     task_details: string;
@@ -35,6 +38,7 @@ interface AdminTask {
     priority: string | null;
     assigned_date: string;
     due_date: string | null;
+    due_time: string | null;  // <-- ADD THIS
     allotted_time: number | null;
     task_status: TaskStatus;
     total_time_taken: number;
@@ -47,6 +51,26 @@ interface AdminTask {
     rework_count: number;
     has_active_session: boolean;
     attachments: { id: number; file: string; uploaded_at: string }[];
+}
+ 
+interface ActivePause {
+    id: number;
+    task: number;
+    task_name: string;
+    pause_type: "break" | "another_reason";
+    break_option: string;
+    break_duration_minutes: number | null;
+    reason: string;
+    start_time: string;
+}
+
+function formatBreakTime(remainingSecs: number): string {
+    const isOver = remainingSecs < 0;
+    const abs = Math.abs(remainingSecs);
+    const m = Math.floor(abs / 60);
+    const s = abs % 60;
+    const formatted = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    return isOver ? `${formatted} (Exceeded)` : `${formatted} remaining`;
 }
 
 const STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string }> = {
@@ -129,6 +153,12 @@ export default function My_Task_Admin() {
     const [priorityFilter, setPriorityFilter] = useState<string | undefined>(undefined);
     const [busyTaskId, setBusyTaskId] = useState<number | null>(null);
     const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
+    const [activePause, setActivePause] = useState<ActivePause | null>(null);
+    const [breakRemaining, setBreakRemaining] = useState<number>(0);
+
+    // Pause modal
+    const [pauseOpen, setPauseOpen] = useState(false);
+    const [pauseTarget, setPauseTarget] = useState<AdminTask | null>(null);
 
     const [submitOpen, setSubmitOpen] = useState(false);
     const [submitTarget, setSubmitTarget] = useState<AdminTask | null>(null);
@@ -151,9 +181,31 @@ export default function My_Task_Admin() {
     const fetchActiveSession = useCallback(() => {
         fetch(`${BASE_URL}/api/tasks/my_active_session/`, { headers: { ...authHeaders() } })
             .then((r) => r.json())
-            .then((d) => setActiveTaskId(d?.task ?? null))
-            .catch(() => setActiveTaskId(null));
+            .then((d) => {
+                setActiveTaskId(d?.active ? d.task : null);
+                setActivePause(d?.active_pause ?? null);
+            })
+            .catch(() => {
+                setActiveTaskId(null);
+                setActivePause(null);
+            });
     }, []);
+
+    useEffect(() => {
+        if (!activePause) return;
+        const update = () => {
+            const passedSecs = dayjs().diff(dayjs(activePause.start_time), "second");
+            if (activePause.break_duration_minutes) {
+                const totalSecs = activePause.break_duration_minutes * 60;
+                setBreakRemaining(totalSecs - passedSecs);
+            } else {
+                setBreakRemaining(-passedSecs);
+            }
+        };
+        update();
+        const interval = window.setInterval(update, 1000);
+        return () => window.clearInterval(interval);
+    }, [activePause]);
 
     function isValidHttpUrl(str: string): boolean {
         try {
@@ -167,16 +219,31 @@ export default function My_Task_Admin() {
     useEffect(() => { fetchTasks(); fetchActiveSession(); }, [fetchTasks, fetchActiveSession]);
 
     const filtered = useMemo(() => {
-        return tasks.filter((t) => {
-            if (statusFilter && t.task_status !== statusFilter) return false;
-            if (priorityFilter && t.priority !== priorityFilter) return false;
-            if (search.trim()) {
-                const q = search.toLowerCase();
-                const haystack = [t.task_id, t.project_name, t.task_name, t.task_details];
-                if (!haystack.some((f) => f?.toLowerCase().includes(q))) return false;
-            }
-            return true;
-        });
+        return tasks
+            .filter((t) => {
+                if (statusFilter && t.task_status !== statusFilter) return false;
+                if (priorityFilter && t.priority !== priorityFilter) return false;
+                if (search.trim()) {
+                    const q = search.toLowerCase();
+                    const haystack = [t.task_id, t.sub_task_id, t.project_name, t.task_name, t.task_details];
+                    if (!haystack.some((f) => f?.toLowerCase().includes(q))) return false;
+                }
+                return true;
+            })
+            .sort((a, b) => {
+                if (!a.due_date && !b.due_date) return a.id - b.id;
+                if (!a.due_date) return 1;
+                if (!b.due_date) return -1;
+
+                const timeA = a.due_time || "23:59:59";
+                const timeB = b.due_time || "23:59:59";
+
+                const dateTimeA = dayjs(`${a.due_date} ${timeA}`).valueOf();
+                const dateTimeB = dayjs(`${b.due_date} ${timeB}`).valueOf();
+
+                const diff = dateTimeA - dateTimeB;
+                return diff !== 0 ? diff : a.id - b.id;
+            });
     }, [tasks, search, statusFilter, priorityFilter]);
 
     const totalTasks = tasks.length;
@@ -274,17 +341,38 @@ export default function My_Task_Admin() {
         if (task.task_status === "in_progress") {
             return (
                 <div style={{ display: "flex", gap: 6 }}>
-                    <Button size="small" loading={busy} icon={<PauseCircleOutlined />} onClick={() => callTimerAction(task, "pause")} style={{ fontSize: 11, fontWeight: 600, borderRadius: 6 }}>Pause</Button>
+                    <Button
+                        size="small"
+                        loading={busy}
+                        icon={<PauseCircleOutlined />}
+                        onClick={() => {
+                            setPauseTarget(task);
+                            setPauseOpen(true);
+                        }}
+                        style={{ fontSize: 11, fontWeight: 600, borderRadius: 6 }}
+                    >
+                        Pause
+                    </Button>
                     <Button size="small" loading={busy} icon={<CheckCircleOutlined />} onClick={() => openSubmit(task)} style={{ fontSize: 11, fontWeight: 600, borderRadius: 6, background: "var(--accent)", color: "#fff", border: "none" }}>Submit</Button>
                 </div>
             );
         }
         if (task.task_status === "paused" || task.task_status === "rework_needed") {
+            const isThisTaskOnBreak = activePause !== null && activePause.task === task.id;
             return (
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <Tooltip title={anotherTaskActive ? "Pause or submit your active task first" : ""}>
                         <Button size="small" loading={busy} disabled={anotherTaskActive} icon={<PlayCircleOutlined />} onClick={() => callTimerAction(task, "resume")} style={{ fontSize: 11, fontWeight: 600, borderRadius: 6 }}>Resume</Button>
                     </Tooltip>
+                    {isThisTaskOnBreak && (
+                        <Tag
+                            color={breakRemaining < 0 ? "error" : "warning"}
+                            icon={activePause?.pause_type === "break" ? <CoffeeOutlined /> : <PauseCircleOutlined />}
+                            style={{ margin: 0, fontWeight: 600, fontSize: 11, borderRadius: 6 }}
+                        >
+                            {activePause?.pause_type === "break" ? formatBreakTime(breakRemaining) : "Paused"}
+                        </Tag>
+                    )}
                     <Button size="small" icon={<CheckCircleOutlined />} onClick={() => openSubmit(task)} style={{ fontSize: 11, fontWeight: 600, borderRadius: 6, background: "var(--accent)", color: "#fff", border: "none" }}>Submit</Button>
                 </div>
             );
@@ -314,15 +402,42 @@ export default function My_Task_Admin() {
             )
         },
         {
+            title: "Sub Task ID",
+            dataIndex: "sub_task_id",
+            key: "sub_task_id",
+            width: 100,
+            render: (_: unknown, record: AdminTask) => (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", background: "var(--green-bg)", border: "1px solid var(--green)", padding: "2px 10px", borderRadius: 6, whiteSpace: "nowrap", width: "fit-content" }}>
+                        {record.sub_task_id ? record.sub_task_id : "—"}
+                    </span>
+                </div>
+            ),
+        },
+        {
             title: "Project Name", dataIndex: "project_name", key: "project_name", width: 120, render: (v: string | null) => (
                 v ? <span style={{ fontSize: 12.5, fontWeight: 600 }}>{v}</span> : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
             )
         },
         { title: "Task Name", dataIndex: "task_name", key: "task_name", width: 180, fixed: "left", render: (v: string) => <span style={{ fontSize: 12.5, fontWeight: 600 }}>{v}</span> },
         {
-            title: "Task Details", dataIndex: "task_details", key: "task_details", width: 220, render: (v: string) => (
-                <div style={{ fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={v}>{v || "—"}</div>
-            )
+            title: "Task Details",
+            dataIndex: "task_details",
+            key: "task_details",
+            width: 280,
+            render: (v: string) => (
+                <div
+                    style={{
+                        fontSize: 11.5,
+                        color: "var(--text-secondary)",
+                        whiteSpace: "normal",
+                        wordBreak: "break-word",
+                        lineHeight: 1.4,
+                    }}
+                >
+                    {v || "—"}
+                </div>
+            ),
         },
         { title: "Assigned By (TL)", dataIndex: "assigned_by_name", key: "assigned_by_name", width: 130, render: (v: string | null) => <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{v ?? "—"}</span> },
         { title: "Priority", dataIndex: "priority", key: "priority", width: 100, render: (v: string | null) => <PriorityTag priority={v} /> },
@@ -335,7 +450,7 @@ export default function My_Task_Admin() {
             }
         },
         {
-            title: "Remaining/Over Time", dataIndex: "remaining_or_over_time", key: "remaining_or_over_time", width: 130, render: (v: number) => (
+            title: "Remaining/Over Time", dataIndex: "remaining_or_over_time", key: "remaining_or_over_time", width: 150, render: (v: number) => (
                 <span className={v < 0 ? "td-down" : "td-up"} style={{ fontSize: 12 }}>{v < 0 ? `${formatAllottedTime(Math.abs(v))} over` : formatAllottedTime(v)}</span>
             )
         },
@@ -366,7 +481,24 @@ export default function My_Task_Admin() {
             ),
         },
         { title: "Assigned Date", dataIndex: "assigned_date", key: "assigned_date", width: 110, render: (v: string) => <span style={{ fontSize: 11.5 }}>{dayjs(v).format("DD MMM YYYY")}</span> },
-        { title: "Due Date", dataIndex: "due_date", key: "due_date", width: 110, render: (v: string | null) => <span style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>{v ? dayjs(v).format("DD MMM YYYY") : "—"}</span> },
+        {
+            title: "Due Date & Deadline",
+            dataIndex: "due_date",
+            key: "due_date",
+            width: 150,
+            render: (_: any, record: AdminTask) => (
+                <div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>
+                        {record.due_date ? dayjs(record.due_date).format("DD MMM YYYY") : "—"}
+                    </div>
+                    {record.due_time && (
+                        <div style={{ fontSize: 11, color: "var(--red, #e11d48)", fontWeight: 600, marginTop: 2 }}>
+                            by {dayjs(`1970-01-01T${record.due_time}`).format("hh:mm A")}
+                        </div>
+                    )}
+                </div>
+            ),
+        },
         {
             title: "Task Sheet Link", dataIndex: "task_sheet_link", key: "task_sheet_link", width: 140, render: (v: string) => v ? (
                 <a href={v} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, display: "flex", alignItems: "center", gap: 4 }}><LinkOutlined /> Open</a>
@@ -387,7 +519,7 @@ export default function My_Task_Admin() {
                 <div style={{ fontSize: 11.5, color: "var(--text-secondary)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={v}>{v || "—"}</div>
             )
         },
-        { title: "Rework Count", dataIndex: "rework_count", key: "rework_count", width: 95, render: (v: number) => <span className="td-num" style={{ fontSize: 12 }}>{v}</span> },
+        { title: "Rework Count", dataIndex: "rework_count", key: "rework_count", width: 120, render: (v: number) => <span className="td-num" style={{ fontSize: 12 }}>{v}</span> },
         { title: "Actions", key: "actions", width: 190, fixed: "right", render: (_: any, record: AdminTask) => <TimerActions task={record} /> },
     ];
 
@@ -395,12 +527,76 @@ export default function My_Task_Admin() {
         <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
                 <div>
-                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>My Task</h1>
+                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>Assigned Tasks</h1>
                     <p style={{ fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0", fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase" }}>
                         Tasks a team lead assigned directly to you
                     </p>
                 </div>
             </div>
+
+            {activePause && (
+                <div style={{
+                    marginBottom: 18,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "14px 20px",
+                    borderRadius: 12,
+                    background: "#fffbeb",
+                    border: "1px solid #fde68a",
+                    borderLeft: "4px solid #d97706",
+                    boxShadow: "0 2px 8px rgba(217, 119, 6, 0.08)",
+                    flexWrap: "wrap",
+                    gap: 12,
+                }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <span style={{ color: "#d97706", display: "flex", fontSize: 24 }}>
+                            {activePause.pause_type === "break" ? <CoffeeOutlined /> : <PauseCircleOutlined />}
+                        </span>
+                        <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#d97706", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                {activePause.pause_type === "break"
+                                    ? `Currently on break (${activePause.break_duration_minutes || 30} mins)`
+                                    : "Currently paused"}
+                            </div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
+                                {activePause.task_name} <span style={{ fontSize: 12, fontWeight: 500, color: "#8c8c8c" }}>— {activePause.reason}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                        <span style={{
+                            fontSize: 22,
+                            fontWeight: 700,
+                            fontVariantNumeric: "tabular-nums",
+                            color: breakRemaining < 0 ? "var(--red, #cf1322)" : "#d97706",
+                        }}>
+                            {formatBreakTime(breakRemaining)}
+                        </span>
+                        <Button
+                            type="primary"
+                            loading={busyTaskId === activePause.task}
+                            onClick={() => {
+                                const t = tasks.find(x => x.id === activePause.task);
+                                if (t) {
+                                    callTimerAction(t, "resume");
+                                } else {
+                                    fetch(`${BASE_URL}/api/tasks/${activePause.task}/resume/`, {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json", ...authHeaders() },
+                                    }).then(() => {
+                                        fetchTasks();
+                                        fetchActiveSession();
+                                    });
+                                }
+                            }}
+                            style={{ fontSize: 12, fontWeight: 600, borderRadius: 8, background: "var(--accent)", border: "none" }}
+                        >
+                            Resume Task
+                        </Button>
+                    </div>
+                </div>
+            )}
 
             <div className="db-stat-grid">
                 <StatCard label="Total Tasks" value={totalTasks} />
@@ -442,7 +638,6 @@ export default function My_Task_Admin() {
                 {submitTarget && (
                     <Form form={submitForm} layout="vertical">
                         <Form.Item label="Task Sheet Link" name="task_sheet_link" rules={[
-                            { required: true, message: "Please enter your task sheet link" },
                             { validator: (_, value) => (!value || isValidHttpUrl(value)) ? Promise.resolve() : Promise.reject(new Error("Enter a valid link starting with http:// or https://")) },
                         ]}>
                             <Input placeholder="https://docs.google.com/..." />
@@ -458,6 +653,19 @@ export default function My_Task_Admin() {
                     </Form>
                 )}
             </Modal>
+
+            <PauseTaskModal
+                open={pauseOpen}
+                task={pauseTarget}
+                onClose={() => {
+                    setPauseOpen(false);
+                    setPauseTarget(null);
+                }}
+                onSuccess={() => {
+                    fetchTasks();
+                    fetchActiveSession();
+                }}
+            />
         </div>
     );
 }
