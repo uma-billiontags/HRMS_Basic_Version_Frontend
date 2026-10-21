@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Button, message, Spin } from "antd";
+import { Button, Spin } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { useAuth } from "../AuthContext"; // adjust path to match your project
 import WorkTimelineChart from "../common/WorkTimelineChart";
@@ -83,30 +83,46 @@ export default function Admin_Dashboard() {
     const [loading, setLoading] = useState(true);   // ← renamed from _loading, now actually used
     const [pendingReviewCount, setPendingReviewCount] = useState(0);
 
-    const fetchAll = useCallback(() => {
+    const fetchAll = useCallback(async (retryCount = 0) => {
         setLoading(true);
-        Promise.all([
-            fetch(`${BASE_URL}/api/tasks/reports/admin/`, { headers: { ...authHeaders() } }).then((r) => r.json()),
-            fetch(`${BASE_URL}/api/tasks/review_tasks/`, { headers: { ...authHeaders() } }).then((r) => r.json()),
-        ])
-            .then(([report, reviewQueue]) => {
+        try {
+            const [reportRes, reviewRes] = await Promise.all([
+                fetch(`${BASE_URL}/api/tasks/reports/admin/`, { headers: { ...authHeaders() } }),
+                fetch(`${BASE_URL}/api/tasks/review_tasks/`, { headers: { ...authHeaders() } }),
+            ]);
+
+            if (!reportRes.ok) {
+                if (retryCount < 1) {
+                    setTimeout(() => fetchAll(retryCount + 1), 1200);
+                    return;
+                }
+                throw new Error(`Report HTTP ${reportRes.status}`);
+            }
+
+            const report = await reportRes.json();
+            const reviewQueue = reviewRes.ok ? await reviewRes.json() : [];
+
+            if (report && typeof report === "object" && "summary" in report) {
                 setData(report);
-                setPendingReviewCount(Array.isArray(reviewQueue) ? reviewQueue.length : 0);
-            })
-            .catch(() => message.error("Failed to load dashboard data"))
-            .finally(() => setLoading(false));
+            }
+            setPendingReviewCount(Array.isArray(reviewQueue) ? reviewQueue.length : 0);
+        } catch (err) {
+            console.warn("Dashboard fetch error:", err);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
     useEffect(() => {
         fetchAll();
     }, [fetchAll]);
 
-    const totalTasks = data?.summary.total_tasks ?? 0;
-    const overdueCount = data?.summary.overdue ?? 0;
-    const openTasksCount = data?.by_status.find((s) => s.task_status === "not_started")?.count ?? 0;
-    const inProgressCount = data?.by_status.find((s) => s.task_status === "in_progress")?.count ?? 0;
+    const totalTasks = data?.summary?.total_tasks ?? 0;
+    const overdueCount = data?.summary?.overdue ?? 0;
+    const openTasksCount = data?.by_status?.find?.((s) => s.task_status === "not_started")?.count ?? 0;
+    const inProgressCount = data?.by_status?.find?.((s) => s.task_status === "in_progress")?.count ?? 0;
     const overduePercentage = totalTasks > 0 ? Math.round((overdueCount / totalTasks) * 100) : 0;
-    const completedPercentage = data?.summary.completion_rate ?? 0;
+    const completedPercentage = data?.summary?.completion_rate ?? 0;
 
     return (
         <div>
@@ -126,7 +142,7 @@ export default function Admin_Dashboard() {
                     </p>
                 </div>
                 <Button
-                    onClick={fetchAll}
+                    onClick={() => fetchAll()}
                     icon={<ReloadOutlined />}
                     loading={loading}
                     className="db-card-action"
@@ -146,13 +162,13 @@ export default function Admin_Dashboard() {
                     <StatCard label="Review Pending" value={pendingReviewCount} changeLabel="Awaiting your decision" changeType={pendingReviewCount > 0 ? "down" : "neutral"} />
                     <StatCard
                         label="Monthly Task Assigned"
-                        value={`${data?.summary.monthly_assigned_hours ?? 0} / ${data?.summary.monthly_working_hours ?? 216} hrs`}
-                        changeLabel={`${data?.summary.monthly_working_days ?? 27} workdays @ 8h (${data?.summary.monthly_capacity_percentage ?? 0}%)`}
+                        value={`${data?.summary?.monthly_assigned_hours ?? 0} / ${data?.summary?.monthly_working_hours ?? 216} hrs`}
+                        changeLabel={`${data?.summary?.monthly_working_days ?? 27} workdays @ 8h (${data?.summary?.monthly_capacity_percentage ?? 0}%)`}
                         changeType="neutral"
                     />
                     <StatCard
                         label="Monthly Capacity"
-                        value={`${data?.summary.monthly_working_hours ?? 216} hrs`}
+                        value={`${data?.summary?.monthly_working_hours ?? 216} hrs`}
                         changeLabel="6 days working (Mon–Sat, Sun off)"
                         changeType="neutral"
                     />

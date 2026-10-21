@@ -26,6 +26,7 @@ import Rework_Tasks from "./components/admin/tasks/Employee_Tasks/Rework_Tasks";
 import Open_Tasks from "./components/admin/tasks/Employee_Tasks/Open_Tasks";
 import Overdue_Tasks from "./components/admin/tasks/Employee_Tasks/Overdue_Tasks";
 import Completed_Tasks_Employee from "./components/employee/tasks/Completed_Tasks_Employee";
+import Submitted_Tasks_Employee from "./components/employee/tasks/Submitted_Tasks_Employee";
 import All_Task_Employee from "./components/employee/tasks/All_Task_Employee";
 import TL_Create_Task from "./components/employee/tasks/TL_Create_Task";
 import My_Task_Admin from "./components/admin/tasks/My_Tasks/My_Task_Admin";
@@ -108,6 +109,7 @@ function App() {
               <Route path="/employee/requests" element={<EmployeeRequests />} />
               <Route path="/employee/all_tasks" element={<All_Task_Employee />} />
               <Route path="/employee/my_upcoming_tasks" element={<Employee_Upcoming_Tasks />} /> {/* <-- ADD THIS */}
+              <Route path="/employee/submitted_tasks" element={<Submitted_Tasks_Employee />} />
               <Route path="/employee/completed_tasks" element={<Completed_Tasks_Employee />} />
               <Route path="/employee/approved_requests" element={<Approved_Request_Employee />} />
               <Route path="/employee/rejected_requests" element={<Rejected_Request_Employee />} />
@@ -131,3 +133,4 @@ function App() {
 }
 
 export default App;
+

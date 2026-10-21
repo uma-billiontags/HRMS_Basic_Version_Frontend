@@ -18,6 +18,7 @@ import {
     AlarmClock,
     Mail,
     Inbox,
+    Send,
     type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "./AuthContext";
@@ -112,6 +113,7 @@ const EMPLOYEE_NAV: NavGroup[] = [
         items: [
             { label: "Assigned Tasks", icon: ClipboardList, to: "/employee/all_tasks" },
             { label: "Upcoming Tasks", icon: CalendarDays, to: "/employee/my_upcoming_tasks" }, // <-- ADD THIS
+            { label: "Submitted Tasks", icon: Send, to: "/employee/submitted_tasks" },
             { label: "Completed Tasks", icon: CheckCircle2, to: "/employee/completed_tasks" },
         ],
 
@@ -147,6 +149,7 @@ const TL_NAV: NavGroup[] = [
         items: [
             { label: "Assigned Tasks", icon: ClipboardList, to: "/employee/all_tasks" },
             { label: "Upcoming Tasks", icon: CalendarDays, to: "/employee/my_upcoming_tasks" }, // <-- ADD THIS
+            { label: "Submitted Tasks", icon: Send, to: "/employee/submitted_tasks" },
             { label: "Completed Tasks", icon: CheckCircle2, to: "/employee/completed_tasks" },
 
         ],
@@ -310,3 +313,5 @@ export default function Sidebar({ role, userName, isTL = false }: SidebarProps) 
         </aside>
     );
 }
+
+

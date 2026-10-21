@@ -49,6 +49,34 @@ function authHeaders(): HeadersInit {
     }
 }
 
+function formatDurationBadge(hours: number | null | undefined): string {
+    if (hours === null || hours === undefined) return "--";
+    const totalMinutes = Math.round(Number(hours) * 60);
+    if (totalMinutes === 0) return "0 mins";
+    if (totalMinutes < 60) {
+        return `${totalMinutes} mins`;
+    }
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function formatDurationDetail(hours: number | null | undefined): string {
+    if (hours === null || hours === undefined) return "0 mins (0 hrs)";
+    const totalMinutes = Math.round(Number(hours) * 60);
+    if (totalMinutes < 60) {
+        return `${totalMinutes} mins (${hours ?? 0} hrs)`;
+    }
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    const hmStr = m > 0 ? `${h}h ${m}m` : `${h}h`;
+    return `${hmStr} (${hours ?? 0} hrs)`;
+}
+
+const formatBreakBadge = formatDurationBadge;
+const formatBreakDetail = formatDurationDetail;
+
+
 interface AttendanceCommentItem {
     id: number;
     author_name: string;
@@ -642,8 +670,8 @@ export default function Attendance_Employee() {
                                 <div style={{ fontSize: 13, fontWeight: 700, color: "#78350F" }}>
                                     <span>
                                         {todayStatus.attendance?.production_hours !== undefined && todayStatus.attendance?.production_hours !== null
-                                            ? `${todayStatus.attendance.production_hours} hrs prod`
-                                            : `${todayStatus.attendance?.total_hours || 0} hrs prod`}
+                                            ? `${formatDurationBadge(todayStatus.attendance.production_hours)} prod`
+                                            : `${formatDurationBadge(todayStatus.attendance?.total_hours || 0)} prod`}
                                     </span>
                                     <span style={{ margin: "0 6px", color: "#D97706" }}>•</span>
                                     <span style={{ color: "#B45309", fontWeight: 600 }}>
@@ -956,22 +984,23 @@ export default function Attendance_Employee() {
                     <table style={{ width: "100%",  minWidth: "1200px",  borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
                         <thead>
                             <tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E2E8F0", color: "#475569", whiteSpace: "nowrap", }}>
-                                <th style={{ width: "130px", padding: "12px 14px", fontWeight: 600 }}>Date</th>
-                                <th style={{ padding: "12px 14px", fontWeight: 600 }}>Day</th>
-                                <th style={{ padding: "12px 14px", fontWeight: 600 }}>TAG ID</th>
-                                <th style={{ padding: "12px 14px", fontWeight: 600 }}>In Time (24h)</th>
-                                <th style={{ padding: "12px 14px", fontWeight: 600 }}>Out Time (24h)</th>
-                                <th style={{ padding: "12px 14px", fontWeight: 600 }}>Production Hrs</th>
-                                <th style={{ padding: "12px 14px", fontWeight: 600 }}>Break / Pauses</th>
-                                <th style={{ padding: "12px 14px", fontWeight: 600 }}>Status</th>
-                                <th style={{ padding: "12px 14px", fontWeight: 600 }}>Remarks & Notes</th>
-                                <th style={{ padding: "12px 14px", fontWeight: 600, textAlign: "center" }}>Action</th>
+                                <th style={{ minWidth: "135px", padding: "12px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>Date</th>
+                                <th style={{ padding: "12px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>Day</th>
+                                <th style={{ padding: "12px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>TAG ID</th>
+                                <th style={{ padding: "12px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>Employee Name</th>
+                                <th style={{ padding: "12px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>In Time (24h)</th>
+                                <th style={{ padding: "12px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>Out Time (24h)</th>
+                                <th style={{ padding: "12px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>Production Hrs</th>
+                                <th style={{ padding: "12px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>Break / Pauses</th>
+                                <th style={{ padding: "12px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>Status</th>
+                                <th style={{ padding: "12px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>Remarks & Notes</th>
+                                <th style={{ padding: "12px 14px", fontWeight: 600, textAlign: "center", whiteSpace: "nowrap" }}>Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             {monthlyDays.length === 0 ? (
                                 <tr>
-                                    <td colSpan={10} style={{ textAlign: "center", padding: "40px", color: "#94A3B8" }}>
+                                    <td colSpan={11} style={{ textAlign: "center", padding: "40px", color: "#94A3B8" }}>
                                         No attendance data found for this month.
                                     </td>
                                 </tr>
@@ -1009,8 +1038,8 @@ export default function Attendance_Employee() {
                                             }}
                                         >
                                             {/* Date Column */}
-                                            <td style={{ padding: "10px 14px", fontWeight: 500 }}>
-                                                {dayjs(day.date).format("DD-MM-YYYY")}
+                                            <td style={{ padding: "10px 14px", fontWeight: 500, whiteSpace: "nowrap", minWidth: "135px" }}>
+                                                <span style={{ whiteSpace: "nowrap" }}>{dayjs(day.date).format("DD-MM-YYYY")}</span>
                                                 {isToday && (
                                                     <Tag color="processing" style={{ marginLeft: 6, fontSize: 10 }}>Today</Tag>
                                                 )}
@@ -1022,14 +1051,20 @@ export default function Attendance_Employee() {
                                                     padding: "10px 14px",
                                                     color: isSunday ? "#94A3B8" : "#334155",
                                                     fontWeight: isSunday ? 400 : 500,
+                                                    whiteSpace: "nowrap",
                                                 }}
                                             >
                                                 {day.day_name}
                                             </td>
 
                                             {/* TAG ID */}
-                                            <td style={{ padding: "10px 14px", fontFamily: "monospace", color: "#64748B" }}>
-                                                {day.tag_id || "-"}
+                                            <td style={{ padding: "10px 14px", fontFamily: "monospace", color: "#64748B", whiteSpace: "nowrap" }}>
+                                                {day.tag_id || monthlyDays.find((d) => d.tag_id)?.tag_id || "-"}
+                                            </td>
+
+                                            {/* Employee Name */}
+                                            <td style={{ padding: "10px 14px", fontWeight: 600, color: "#1E293B", whiteSpace: "nowrap" }}>
+                                                {day.employee_name || user?.name || "-"}
                                             </td>
 
                                             {/* IN TIME COLUMN WITH EDIT ICON (ALWAYS ENABLED FOR ALL DAYS) */}
@@ -1125,16 +1160,16 @@ export default function Attendance_Employee() {
                                                         title={
                                                             <div style={{ fontSize: 12 }}>
                                                                 <div style={{ fontWeight: 700, marginBottom: 2 }}>Production Breakdown:</div>
-                                                                <div>• Working Hours (Task Timer): {day.task_work_hours ?? 0} hrs</div>
-                                                                <div>• Untracked Time: {day.untracked_hours ?? 0} hrs</div>
+                                                                <div>• Working Hours (Task Timer): {formatDurationDetail(day.task_work_hours)}</div>
+                                                                <div>• Untracked Time: {formatDurationDetail(day.untracked_hours)}</div>
                                                                 <div style={{ marginTop: 4, borderTop: "1px solid rgba(255,255,255,0.2)", paddingTop: 2, fontWeight: 600 }}>
-                                                                    Total Production: {day.production_hours ?? 0} hrs
+                                                                    Total Production: {formatDurationDetail(day.production_hours)}
                                                                 </div>
                                                             </div>
                                                         }
                                                     >
-                                                        <span style={{ color: "#0F766E", background: "rgba(15, 118, 110, 0.08)", padding: "4px 8px", borderRadius: 6, cursor: "pointer" }}>
-                                                            {day.production_hours} hrs
+                                                        <span style={{ color: "#0F766E", background: "rgba(15, 118, 110, 0.08)", padding: "4px 8px", borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                                            {formatDurationBadge(day.production_hours)}
                                                         </span>
                                                     </Tooltip>
                                                 ) : (
@@ -1149,16 +1184,16 @@ export default function Attendance_Employee() {
                                                         title={
                                                             <div style={{ fontSize: 12 }}>
                                                                 <div style={{ fontWeight: 700, marginBottom: 2 }}>Break & Pause Details:</div>
-                                                                <div>• Normal Breaks: {day.normal_break_hours ?? 0} hrs</div>
-                                                                <div>• Other Pauses: {day.other_pause_hours ?? 0} hrs</div>
+                                                                <div>• Normal Breaks: {formatBreakDetail(day.normal_break_hours)}</div>
+                                                                <div>• Other Pauses: {formatBreakDetail(day.other_pause_hours)}</div>
                                                                 <div style={{ marginTop: 4, borderTop: "1px solid rgba(255,255,255,0.2)", paddingTop: 2, fontWeight: 600 }}>
-                                                                    Total Breaks: {day.break_hours ?? 0} hrs
+                                                                    Total Breaks: {formatBreakDetail(day.break_hours)}
                                                                 </div>
                                                             </div>
                                                         }
                                                     >
-                                                        <span style={{ color: "#B45309", background: "rgba(180, 83, 9, 0.08)", padding: "4px 8px", borderRadius: 6, cursor: "pointer" }}>
-                                                            {day.break_hours} hrs
+                                                        <span style={{ color: "#B45309", background: "rgba(180, 83, 9, 0.08)", padding: "4px 8px", borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                                            {formatBreakBadge(day.break_hours)}
                                                         </span>
                                                     </Tooltip>
                                                 ) : (
@@ -1172,30 +1207,52 @@ export default function Attendance_Employee() {
                                             </td>
 
                                             {/* Remarks & Notes */}
-                                            <td style={{ padding: "10px 14px", maxWidth: 220 }}>
-                                                {day.remarks ? (
-                                                    <Tooltip title={day.remarks}>
-                                                        <span
-                                                            style={{
-                                                                display: "inline-block",
-                                                                maxWidth: 200,
-                                                                overflow: "hidden",
-                                                                textOverflow: "ellipsis",
-                                                                whiteSpace: "nowrap",
-                                                                color: "#475569",
-                                                            }}
-                                                        >
-                                                            {day.remarks}
-                                                        </span>
-                                                    </Tooltip>
-                                                ) : (
-                                                    <span style={{ color: "#CBD5E1" }}>-</span>
-                                                )}
-                                                {day.comments && day.comments.length > 0 && (
-                                                    <Tag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>
-                                                        {day.comments.length} notes
-                                                    </Tag>
-                                                )}
+                                            <td style={{ padding: "10px 14px", minWidth: 200, maxWidth: 300 }}>
+                                                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                                    {day.remarks && (
+                                                        <Tooltip title={day.remarks}>
+                                                            <span
+                                                                style={{
+                                                                    display: "inline-block",
+                                                                    maxWidth: 260,
+                                                                    overflow: "hidden",
+                                                                    textOverflow: "ellipsis",
+                                                                    whiteSpace: "nowrap",
+                                                                    color: day.remarks.toLowerCase().includes("reject") ? "#DC2626" : "#475569",
+                                                                    fontWeight: day.remarks.toLowerCase().includes("reject") ? 600 : 400,
+                                                                }}
+                                                            >
+                                                                {day.remarks}
+                                                            </span>
+                                                        </Tooltip>
+                                                    )}
+
+                                                    {day.corrections?.filter((c) => c.status === "rejected").map((rc) => {
+                                                        const reasonText = rc.admin_notes || rc.reason || "Proof rejected by Admin";
+                                                        const reqType = rc.request_type === "in_time" ? "In-Time" : "Out-Time";
+                                                        const noteText = `Rejected (${reqType}): ${reasonText}`;
+                                                        if (day.remarks && day.remarks.includes(reasonText)) return null;
+                                                        return (
+                                                            <Tooltip key={rc.id} title={`TimeChamp screenshot rejected by Admin: ${reasonText}`}>
+                                                                <Tag color="error" style={{ margin: 0, fontSize: 11, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                                                    ❌ {noteText}
+                                                                </Tag>
+                                                            </Tooltip>
+                                                        );
+                                                    })}
+
+                                                    {!day.remarks && (!day.corrections || !day.corrections.some((c) => c.status === "rejected")) && (
+                                                        <span style={{ color: "#CBD5E1" }}>-</span>
+                                                    )}
+
+                                                    {day.comments && day.comments.length > 0 && (
+                                                        <div>
+                                                            <Tag color="blue" style={{ fontSize: 10 }}>
+                                                                {day.comments.length} notes
+                                                            </Tag>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
 
                                             {/* Actions */}

@@ -45,6 +45,34 @@ function authHeaders(): HeadersInit {
     }
 }
 
+function formatDurationBadge(hours: number | null | undefined): string {
+    if (hours === null || hours === undefined) return "--";
+    const totalMinutes = Math.round(Number(hours) * 60);
+    if (totalMinutes === 0) return "0 mins";
+    if (totalMinutes < 60) {
+        return `${totalMinutes} mins`;
+    }
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function formatDurationDetail(hours: number | null | undefined): string {
+    if (hours === null || hours === undefined) return "0 mins (0 hrs)";
+    const totalMinutes = Math.round(Number(hours) * 60);
+    if (totalMinutes < 60) {
+        return `${totalMinutes} mins (${hours ?? 0} hrs)`;
+    }
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    const hmStr = m > 0 ? `${h}h ${m}m` : `${h}h`;
+    return `${hmStr} (${hours ?? 0} hrs)`;
+}
+
+const formatBreakBadge = formatDurationBadge;
+const formatBreakDetail = formatDurationDetail;
+
+
 interface AttendanceCommentItem {
     id: number;
     author_name: string;
@@ -751,16 +779,16 @@ export default function Attendance_Admin() {
                                                             title={
                                                                 <div style={{ fontSize: 12 }}>
                                                                     <div style={{ fontWeight: 700, marginBottom: 2 }}>Production Breakdown:</div>
-                                                                    <div>• Working Hours (Task Timer): {r.task_work_hours ?? 0} hrs</div>
-                                                                    <div>• Untracked Time: {r.untracked_hours ?? 0} hrs</div>
+                                                                    <div>• Working Hours (Task Timer): {formatDurationDetail(r.task_work_hours)}</div>
+                                                                    <div>• Untracked Time: {formatDurationDetail(r.untracked_hours)}</div>
                                                                     <div style={{ marginTop: 4, borderTop: "1px solid rgba(255,255,255,0.2)", paddingTop: 2, fontWeight: 600 }}>
-                                                                        Total Production: {r.production_hours ?? 0} hrs
+                                                                        Total Production: {formatDurationDetail(r.production_hours)}
                                                                     </div>
                                                                 </div>
                                                             }
                                                         >
-                                                            <span style={{ color: "#0F766E", background: "rgba(15, 118, 110, 0.08)", padding: "4px 8px", borderRadius: 6, cursor: "pointer" }}>
-                                                                {r.production_hours} hrs
+                                                            <span style={{ color: "#0F766E", background: "rgba(15, 118, 110, 0.08)", padding: "4px 8px", borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                                                {formatDurationBadge(r.production_hours)}
                                                             </span>
                                                         </Tooltip>
                                                     ) : (
@@ -773,16 +801,16 @@ export default function Attendance_Admin() {
                                                             title={
                                                                 <div style={{ fontSize: 12 }}>
                                                                     <div style={{ fontWeight: 700, marginBottom: 2 }}>Break & Pause Details:</div>
-                                                                    <div>• Normal Breaks: {r.normal_break_hours ?? 0} hrs</div>
-                                                                    <div>• Other Pauses: {r.other_pause_hours ?? 0} hrs</div>
+                                                                    <div>• Normal Breaks: {formatBreakDetail(r.normal_break_hours)}</div>
+                                                                    <div>• Other Pauses: {formatBreakDetail(r.other_pause_hours)}</div>
                                                                     <div style={{ marginTop: 4, borderTop: "1px solid rgba(255,255,255,0.2)", paddingTop: 2, fontWeight: 600 }}>
-                                                                        Total Breaks: {r.break_hours ?? 0} hrs
+                                                                        Total Breaks: {formatBreakDetail(r.break_hours)}
                                                                     </div>
                                                                 </div>
                                                             }
                                                         >
-                                                            <span style={{ color: "#B45309", background: "rgba(180, 83, 9, 0.08)", padding: "4px 8px", borderRadius: 6, cursor: "pointer" }}>
-                                                                {r.break_hours} hrs
+                                                            <span style={{ color: "#B45309", background: "rgba(180, 83, 9, 0.08)", padding: "4px 8px", borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                                                {formatBreakBadge(r.break_hours)}
                                                             </span>
                                                         </Tooltip>
                                                     ) : (
@@ -792,17 +820,18 @@ export default function Attendance_Admin() {
                                                 <td style={{ padding: "12px 14px" }}>
                                                     {getStatusTag(r.status)}
                                                 </td>
-                                                <td style={{ padding: "12px 14px", maxWidth: 220 }}>
+                                                <td style={{ padding: "12px 14px", maxWidth: 240 }}>
                                                     {r.remarks ? (
                                                         <Tooltip title={r.remarks}>
                                                             <span
                                                                 style={{
                                                                     display: "inline-block",
-                                                                    maxWidth: 200,
+                                                                    maxWidth: 220,
                                                                     overflow: "hidden",
                                                                     textOverflow: "ellipsis",
                                                                     whiteSpace: "nowrap",
-                                                                    color: "#475569",
+                                                                    color: r.remarks.toLowerCase().includes("reject") ? "#DC2626" : "#475569",
+                                                                    fontWeight: r.remarks.toLowerCase().includes("reject") ? 600 : 400,
                                                                 }}
                                                             >
                                                                 {r.remarks}
@@ -1026,7 +1055,7 @@ export default function Attendance_Admin() {
                             <table style={{ width: "100%", minWidth: "1300px", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
                                 <thead>
                                     <tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E2E8F0", color: "#475569", whiteSpace: "nowrap", }}>
-                                        <th style={{ padding: "10px 12px", fontWeight: 600 }}>Date</th>
+                                        <th style={{ padding: "10px 12px", fontWeight: 600, whiteSpace: "nowrap", minWidth: "125px" }}>Date</th>
                                         <th style={{ padding: "10px 12px", fontWeight: 600 }}>Day</th>
                                         <th style={{ padding: "10px 12px", fontWeight: 600 }}>TAG ID</th>
                                         <th style={{ padding: "10px 12px", fontWeight: 600 }}>Employee Name</th>
@@ -1059,7 +1088,7 @@ export default function Attendance_Admin() {
                                                             background: isSunday ? "#F8FAFC" : "#FFFFFF",
                                                         }}
                                                     >
-                                                        <td style={{ padding: "10px 12px", fontWeight: 500 }}>
+                                                        <td style={{ padding: "10px 12px", fontWeight: 500, whiteSpace: "nowrap", minWidth: "125px" }}>
                                                             {dayjs(r.date).format("DD-MM-YYYY")}
                                                         </td>
                                                         <td
@@ -1104,16 +1133,16 @@ export default function Attendance_Admin() {
                                                                     title={
                                                                         <div style={{ fontSize: 12 }}>
                                                                             <div style={{ fontWeight: 700, marginBottom: 2 }}>Production Breakdown:</div>
-                                                                            <div>• Working Hours (Task Timer): {r.task_work_hours ?? 0} hrs</div>
-                                                                            <div>• Untracked Time: {r.untracked_hours ?? 0} hrs</div>
+                                                                            <div>• Working Hours (Task Timer): {formatDurationDetail(r.task_work_hours)}</div>
+                                                                            <div>• Untracked Time: {formatDurationDetail(r.untracked_hours)}</div>
                                                                             <div style={{ marginTop: 4, borderTop: "1px solid rgba(255,255,255,0.2)", paddingTop: 2, fontWeight: 600 }}>
-                                                                                Total Production: {r.production_hours ?? 0} hrs
+                                                                                Total Production: {formatDurationDetail(r.production_hours)}
                                                                             </div>
                                                                         </div>
                                                                     }
                                                                 >
-                                                                    <span style={{ color: "#0F766E", background: "rgba(15, 118, 110, 0.08)", padding: "3px 8px", borderRadius: 6, cursor: "pointer" }}>
-                                                                        {r.production_hours} hrs
+                                                                    <span style={{ color: "#0F766E", background: "rgba(15, 118, 110, 0.08)", padding: "3px 8px", borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                                                        {formatDurationBadge(r.production_hours)}
                                                                     </span>
                                                                 </Tooltip>
                                                             ) : (
@@ -1128,16 +1157,16 @@ export default function Attendance_Admin() {
                                                                     title={
                                                                         <div style={{ fontSize: 12 }}>
                                                                             <div style={{ fontWeight: 700, marginBottom: 2 }}>Break & Pause Details:</div>
-                                                                            <div>• Normal Breaks: {r.normal_break_hours ?? 0} hrs</div>
-                                                                            <div>• Other Pauses: {r.other_pause_hours ?? 0} hrs</div>
+                                                                            <div>• Normal Breaks: {formatBreakDetail(r.normal_break_hours)}</div>
+                                                                            <div>• Other Pauses: {formatBreakDetail(r.other_pause_hours)}</div>
                                                                             <div style={{ marginTop: 4, borderTop: "1px solid rgba(255,255,255,0.2)", paddingTop: 2, fontWeight: 600 }}>
-                                                                                Total Breaks: {r.break_hours ?? 0} hrs
+                                                                                Total Breaks: {formatBreakDetail(r.break_hours)}
                                                                             </div>
                                                                         </div>
                                                                     }
                                                                 >
-                                                                    <span style={{ color: "#B45309", background: "rgba(180, 83, 9, 0.08)", padding: "3px 8px", borderRadius: 6, cursor: "pointer" }}>
-                                                                        {r.break_hours} hrs
+                                                                    <span style={{ color: "#B45309", background: "rgba(180, 83, 9, 0.08)", padding: "3px 8px", borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                                                        {formatBreakBadge(r.break_hours)}
                                                                     </span>
                                                                 </Tooltip>
                                                             ) : (
@@ -1147,17 +1176,18 @@ export default function Attendance_Admin() {
                                                         <td style={{ padding: "10px 12px" }}>
                                                             {getStatusTag(r.status)}
                                                         </td>
-                                                        <td style={{ padding: "10px 12px", maxWidth: 180 }}>
+                                                        <td style={{ padding: "10px 12px", maxWidth: 220 }}>
                                                             {r.remarks ? (
                                                                 <Tooltip title={r.remarks}>
                                                                     <span
                                                                         style={{
                                                                             display: "inline-block",
-                                                                            maxWidth: 160,
+                                                                            maxWidth: 200,
                                                                             overflow: "hidden",
                                                                             textOverflow: "ellipsis",
                                                                             whiteSpace: "nowrap",
-                                                                            color: "#475569",
+                                                                            color: r.remarks.toLowerCase().includes("reject") ? "#DC2626" : "#475569",
+                                                                            fontWeight: r.remarks.toLowerCase().includes("reject") ? 600 : 400,
                                                                         }}
                                                                     >
                                                                         {r.remarks}

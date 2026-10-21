@@ -10,7 +10,6 @@ import {
     Badge,
     Segmented,
     Tooltip as AntTooltip,
-    message,
 } from "antd";
 import {
     LeftOutlined,
@@ -148,8 +147,8 @@ export default function WeeklyTaskAllocationChart({ role, initialEmployeeId }: P
     const isAllEmployees = role === "admin" && (selectedEmployeeId === "all" || !selectedEmployeeId);
     const employeeCount = actorInfo?.active_employees_count || 1;
 
-    // Fetch tracking data from backend
-    const fetchData = useCallback(() => {
+    // Fetch tracking data from backend with retry logic
+    const fetchData = useCallback((retryCount = 0) => {
         setLoading(true);
         const weekDateStr = selectedDate.format("YYYY-MM-DD");
 
@@ -175,8 +174,11 @@ export default function WeeklyTaskAllocationChart({ role, initialEmployeeId }: P
                 }
             })
             .catch((err) => {
-                console.error("Assigned hours tracking error:", err);
-                message.error("Failed to load weekly task allocation data");
+                console.warn("Assigned hours tracking error:", err);
+                if (retryCount < 1) {
+                    setTimeout(() => fetchData(retryCount + 1), 1200);
+                    return;
+                }
             })
             .finally(() => setLoading(false));
     }, [selectedDate, selectedEmployeeId, role]);
@@ -507,7 +509,7 @@ export default function WeeklyTaskAllocationChart({ role, initialEmployeeId }: P
                     <Button
                         size="small"
                         icon={<ReloadOutlined />}
-                        onClick={fetchData}
+                        onClick={() => fetchData()}
                         loading={loading}
                         style={{ height: 32, width: 32, borderRadius: 7 }}
                     />
