@@ -123,6 +123,8 @@ function formatBreakTime(remainingSecs: number): string {
 
 export default function Employee_Dashboard() {
     const { user } = useAuth();
+    const isTL = user?.isTL ?? false;
+    const [selectedMemberId, setSelectedMemberId] = useState<string | number>("");
     const [data, setData] = useState<ReportData | null>(null);
     const [loading, setLoading] = useState(true);   // ← renamed from _loading
     const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
@@ -398,12 +400,22 @@ export default function Employee_Dashboard() {
 
                 {/* ── Weekly Task Allocation Chart (Assigned Hours vs 8h Daily Capacity) ── */}
                 <div style={{ marginTop: 22 }}>
-                    <WeeklyTaskAllocationChart role="employee" />
+                    <WeeklyTaskAllocationChart
+                        role="employee"
+                        isTL={isTL}
+                        selectedEmployeeIdProp={selectedMemberId}
+                        onEmployeeChange={setSelectedMemberId}
+                    />
                 </div>
 
                 {/* ── Daily Work & Break Timeline Chart ── */}
                 <div style={{ marginTop: 22 }}>
-                    <WorkTimelineChart role="employee" />
+                    <WorkTimelineChart
+                        role="employee"
+                        isTL={isTL}
+                        selectedEmployeeIdProp={selectedMemberId}
+                        onEmployeeChange={setSelectedMemberId}
+                    />
                 </div>
             </Spin>
         </div>

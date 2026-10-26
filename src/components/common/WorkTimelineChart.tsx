@@ -105,6 +105,9 @@ interface OfficeSchedule {
 interface Props {
     role: "admin" | "employee";
     initialEmployeeId?: number;
+    isTL?: boolean;
+    selectedEmployeeIdProp?: string | number;
+    onEmployeeChange?: (id: string | number) => void;
 }
 
 function formatMins(mins: number): string {
@@ -115,12 +118,26 @@ function formatMins(mins: number): string {
     return `${m}m`;
 }
 
-export default function WorkTimelineChart({ role, initialEmployeeId }: Props) {
+export default function WorkTimelineChart({
+    role,
+    initialEmployeeId,
+    isTL = false,
+    selectedEmployeeIdProp,
+    onEmployeeChange,
+}: Props) {
     const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
     const [viewMode, setViewMode] = useState<"day" | "week">(role === "employee" ? "day" : "day");
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | number>(
+    const [selectedEmployeeIdInternal, setSelectedEmployeeIdInternal] = useState<string | number>(
         role === "admin" ? (initialEmployeeId ? String(initialEmployeeId) : "all") : ""
     );
+    const selectedEmployeeId = selectedEmployeeIdProp !== undefined ? selectedEmployeeIdProp : selectedEmployeeIdInternal;
+
+    const handleSelectEmployee = (val: string | number) => {
+        setSelectedEmployeeIdInternal(val);
+        onEmployeeChange?.(val);
+        if (val === "all") setViewMode("day");
+    };
+
     const [employeesList, setEmployeesList] = useState<{ id: number; name: string; department?: string }[]>([]);
 
     const [loading, setLoading] = useState(true);
@@ -151,18 +168,25 @@ export default function WorkTimelineChart({ role, initialEmployeeId }: Props) {
             if (selectedEmployeeId && selectedEmployeeId !== "all") {
                 url += `&employee_id=${selectedEmployeeId}`;
             }
+        } else if (isTL) {
+            if (selectedEmployeeId) {
+                url += `&employee_id=${selectedEmployeeId}`;
+            }
         }
 
         fetch(url, { headers: { ...authHeaders() } })
             .then((r) => r.json())
             .then((data) => {
                 setApiResponse(data);
+                if (isTL && Array.isArray(data.team_members) && data.team_members.length > 0) {
+                    setEmployeesList(data.team_members);
+                }
             })
             .catch((err) => {
                 console.error("Failed to load timeline:", err);
             })
             .finally(() => setLoading(false));
-    }, [selectedDate, viewMode, selectedEmployeeId, role]);
+    }, [selectedDate, viewMode, selectedEmployeeId, role, isTL]);
 
     useEffect(() => {
         fetchTimeline();
@@ -353,10 +377,7 @@ export default function WorkTimelineChart({ role, initialEmployeeId }: Props) {
                     {role === "admin" && (
                         <Select
                             value={String(selectedEmployeeId)}
-                            onChange={(val) => {
-                                setSelectedEmployeeId(val);
-                                if (val === "all") setViewMode("day");
-                            }}
+                            onChange={(val) => handleSelectEmployee(val)}
                             style={{ minWidth: 170 }}
                             placeholder="Select Employee"
                             options={[
@@ -366,6 +387,19 @@ export default function WorkTimelineChart({ role, initialEmployeeId }: Props) {
                                     label: `👤 ${e.name}${e.department ? ` (${e.department})` : ""}`,
                                 })),
                             ]}
+                        />
+                    )}
+
+                    {isTL && employeesList.length > 0 && (
+                        <Select
+                            value={selectedEmployeeId ? String(selectedEmployeeId) : String(apiResponse?.employee?.id || employeesList[0]?.id || "")}
+                            onChange={(val) => handleSelectEmployee(val)}
+                            style={{ minWidth: 195 }}
+                            placeholder="Select Team Member"
+                            options={employeesList.map((e) => ({
+                                value: String(e.id),
+                                label: `👤 ${e.name}${e.department && !e.name.includes("My Details") ? ` (${e.department})` : ""}`,
+                            }))}
                         />
                     )}
 

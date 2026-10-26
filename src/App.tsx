@@ -19,7 +19,6 @@ import Completed_Task_Admin from "./components/admin/tasks/Employee_Tasks/Comple
 import Cancel_Task_Admin from "./components/admin/tasks/Employee_Tasks/Cancel_Task_Admin";
 import Admin_Dashboard from "./components/admin/Admin_Dashboard";
 import Employee_Dashboard from "./components/employee/Employee_Dashboard";
-import Task_Master_Admin from "./components/admin/tasks/Employee_Tasks/Task_Master_Admin";
 import Review_Tasks_By_TL from "./components/employee/tasks/Review_Tasks_By_TL";
 import Team_Access from "./components/admin/Team_Access";
 import Rework_Tasks from "./components/admin/tasks/Employee_Tasks/Rework_Tasks";
@@ -30,6 +29,8 @@ import Submitted_Tasks_Employee from "./components/employee/tasks/Submitted_Task
 import All_Task_Employee from "./components/employee/tasks/All_Task_Employee";
 import TL_Create_Task from "./components/employee/tasks/TL_Create_Task";
 import My_Task_Admin from "./components/admin/tasks/My_Tasks/My_Task_Admin";
+import My_Submitted_Task_Admin from "./components/admin/tasks/My_Tasks/My_Submitted_Task_Admin";
+import My_Completed_Task_Admin from "./components/admin/tasks/My_Tasks/My_Completed_Task_Admin";
 import Upcoming_Scheduled_Tasks_Admin from "./components/admin/tasks/Employee_Tasks/Upcoming_Scheduled_Tasks_Admin";
 import Upcoming_Scheduled_Tasks_TL from "./components/employee/tasks/Upcoming_Scheduled_Tasks_TL";
 import My_Upcoming_Task_Admin from "./components/admin/tasks/My_Tasks/My_Upcoming_Task_Admin";
@@ -81,6 +82,8 @@ function App() {
               <Route path="/admin/requests" element={<AdminRequests />} />
               <Route path="/admin/my_tasks" element={<My_Task_Admin />} />
               <Route path="/admin/my_upcoming_tasks" element={<My_Upcoming_Task_Admin />} /> {/* <-- ADD THIS */}
+              <Route path="/admin/my_submitted_tasks" element={<My_Submitted_Task_Admin />} />
+              <Route path="/admin/my_completed_tasks" element={<My_Completed_Task_Admin />} />
               <Route path="/admin/all_tasks" element={<All_Task_Admin />} />
               <Route path="admin/open_tasks" element={<Open_Tasks />} />
               <Route path="admin/overdue_tasks" element={<Overdue_Tasks />} />
@@ -94,7 +97,6 @@ function App() {
               <Route path="/admin/pending_time_correction_requests" element={<Pending_Time_Correction_Request />} />
               <Route path="/admin/reports" element={<Reports_Admin />} />
               <Route path="/admin/audit_history" element={<Audit_History_Admin />} />
-              <Route path="/admin/task_master" element={<Task_Master_Admin />} />
               <Route path="/admin/team_access" element={<Team_Access />} />
               <Route path="/admin/upcoming_scheduled_tasks" element={<Upcoming_Scheduled_Tasks_Admin />} /> {/* <-- ADD THIS */}
 

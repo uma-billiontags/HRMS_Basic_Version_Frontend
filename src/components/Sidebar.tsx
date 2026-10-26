@@ -10,7 +10,6 @@ import {
     History,
     BarChart3,
     LogOut,
-    ListChecks,
     UsersRound,
     CalendarDays, // <-- ADD THIS
     CalendarCheck,
@@ -49,7 +48,9 @@ const ADMIN_NAV: NavGroup[] = [
         section: "TASKS",
         items: [
             { label: "Assigned Tasks", icon: LayoutDashboard, to: "/admin/my_tasks" },
-            { label: "Upcoming Tasks", icon: CalendarDays, to: "/admin/my_upcoming_tasks" }, // <-- ADD THIS
+            { label: "Upcoming Tasks", icon: CalendarDays, to: "/admin/my_upcoming_tasks" },
+            { label: "Submitted Tasks", icon: Send, to: "/admin/my_submitted_tasks" },
+            { label: "Completed Tasks", icon: CheckCircle2, to: "/admin/my_completed_tasks" },
         ],
     },
     {
@@ -77,12 +78,6 @@ const ADMIN_NAV: NavGroup[] = [
     //         { label: "Rejected Requests", icon: XCircle, to: "/admin/rejected_requests" },
     //     ],
     // },
-    {
-        section: "Master Data",
-        items: [
-            { label: "Task Master", icon: ListChecks, to: "/admin/task_master" },
-        ],
-    },
     {
         section: "TEAM ACCESS",
         items: [
@@ -155,10 +150,6 @@ const TL_NAV: NavGroup[] = [
         ],
     },
     {
-        section: "REQUESTS",
-        items: [{ label: "Create / My Requests", icon: Mail, to: "/employee/requests" }],
-    },
-    {
         section: "EMPLOYEE TASKS",
         items: [
             { label: "Team Tasks", icon: UsersRound, to: "/employee/tl_tasks" },
@@ -167,6 +158,10 @@ const TL_NAV: NavGroup[] = [
             { label: "Team Completed Tasks", icon: CheckCircle2, to: "/employee/tl_completed_tasks" },
 
         ],
+    },
+     {
+        section: "REQUESTS",
+        items: [{ label: "Create / My Requests", icon: Mail, to: "/employee/requests" }],
     },
     {
         section: "INSIGHTS", items: [

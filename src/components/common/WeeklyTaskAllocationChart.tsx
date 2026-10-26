@@ -124,13 +124,29 @@ interface EmployeeOption {
 interface Props {
     role: "admin" | "employee";
     initialEmployeeId?: number;
+    isTL?: boolean;
+    selectedEmployeeIdProp?: string | number;
+    onEmployeeChange?: (id: string | number) => void;
 }
 
-export default function WeeklyTaskAllocationChart({ role, initialEmployeeId }: Props) {
+export default function WeeklyTaskAllocationChart({
+    role,
+    initialEmployeeId,
+    isTL = false,
+    selectedEmployeeIdProp,
+    onEmployeeChange,
+}: Props) {
     const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | number>(
+    const [selectedEmployeeIdInternal, setSelectedEmployeeIdInternal] = useState<string | number>(
         role === "admin" ? (initialEmployeeId ? String(initialEmployeeId) : "all") : ""
     );
+    const selectedEmployeeId = selectedEmployeeIdProp !== undefined ? selectedEmployeeIdProp : selectedEmployeeIdInternal;
+
+    const handleSelectEmployee = (val: string | number) => {
+        setSelectedEmployeeIdInternal(val);
+        onEmployeeChange?.(val);
+    };
+
     const [employeesList, setEmployeesList] = useState<EmployeeOption[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -158,6 +174,10 @@ export default function WeeklyTaskAllocationChart({ role, initialEmployeeId }: P
             if (selectedEmployeeId && selectedEmployeeId !== "all") {
                 url += `&employee_id=${selectedEmployeeId}`;
             }
+        } else if (isTL) {
+            if (selectedEmployeeId) {
+                url += `&employee_id=${selectedEmployeeId}`;
+            }
         }
 
         fetch(url, { headers: { ...authHeaders() } })
@@ -169,7 +189,7 @@ export default function WeeklyTaskAllocationChart({ role, initialEmployeeId }: P
                 setMonthData(res.month_tracking || null);
                 setWeekData(res.week_tracking || null);
                 setActorInfo(res.actor || null);
-                if (role === "admin" && Array.isArray(res.employees)) {
+                if ((role === "admin" || isTL) && Array.isArray(res.employees)) {
                     setEmployeesList(res.employees);
                 }
             })
@@ -181,7 +201,7 @@ export default function WeeklyTaskAllocationChart({ role, initialEmployeeId }: P
                 }
             })
             .finally(() => setLoading(false));
-    }, [selectedDate, selectedEmployeeId, role]);
+    }, [selectedDate, selectedEmployeeId, role, isTL]);
 
     useEffect(() => {
         fetchData();
@@ -451,7 +471,7 @@ export default function WeeklyTaskAllocationChart({ role, initialEmployeeId }: P
                     {role === "admin" && (
                         <Select
                             value={selectedEmployeeId}
-                            onChange={(val) => setSelectedEmployeeId(val)}
+                            onChange={(val) => handleSelectEmployee(val)}
                             style={{ width: 175, fontSize: 12 }}
                             placeholder="Filter by employee"
                         >
@@ -463,6 +483,22 @@ export default function WeeklyTaskAllocationChart({ role, initialEmployeeId }: P
                                 <Select.Option key={emp.id} value={String(emp.id)}>
                                     <UserOutlined style={{ marginRight: 6 }} />
                                     {emp.name} {emp.department ? `(${emp.department})` : ""}
+                                </Select.Option>
+                            ))}
+                        </Select>
+                    )}
+
+                    {isTL && employeesList.length > 0 && (
+                        <Select
+                            value={selectedEmployeeId ? String(selectedEmployeeId) : String(actorInfo?.id || employeesList[0]?.id || "")}
+                            onChange={(val) => handleSelectEmployee(val)}
+                            style={{ minWidth: 195, fontSize: 12 }}
+                            placeholder="Select Team Member"
+                        >
+                            {employeesList.map((emp) => (
+                                <Select.Option key={emp.id} value={String(emp.id)}>
+                                    <UserOutlined style={{ marginRight: 6 }} />
+                                    {emp.name} {emp.department && !emp.name.includes("My Details") ? `(${emp.department})` : ""}
                                 </Select.Option>
                             ))}
                         </Select>

@@ -26,6 +26,8 @@ interface EmployeeCredential {
     email: string;
     department: string;
     role: string;
+    belong_to_tl?: number | null;
+    belong_to_tl_name?: string | null;
     is_active: boolean;
     created_at: string;
 }
@@ -66,6 +68,21 @@ export default function Team_Access() {
     const [editing, setEditing] = useState<EmployeeCredential | null>(null);
     const [saving, setSaving] = useState(false);
     const [form] = Form.useForm();
+
+    const watchedRole = Form.useWatch("role", form);
+    const isCurrentRoleTL = typeof watchedRole === "string" && ["TL", "TEAM LEAD"].includes(watchedRole.trim().toUpperCase());
+
+    const availableTLs = users.filter((u) => {
+        const isTL = typeof u.role === "string" && ["TL", "TEAM LEAD"].includes(u.role.trim().toUpperCase());
+        const isSelf = editing && u.id === editing.id;
+        return isTL && u.is_active && !isSelf;
+    });
+
+    useEffect(() => {
+        if (isCurrentRoleTL) {
+            form.setFieldsValue({ belong_to_tl: undefined });
+        }
+    }, [isCurrentRoleTL, form]);
 
     const [addDeptOpen, setAddDeptOpen] = useState(false);
     const [newDeptName, setNewDeptName] = useState("");
@@ -127,7 +144,7 @@ export default function Team_Access() {
     const openAdd = () => {
         setEditing(null);
         form.resetFields();
-        form.setFieldsValue({ is_active: true });
+        form.setFieldsValue({ is_active: true, belong_to_tl: undefined });
         setModalOpen(true);
     };
 
@@ -139,6 +156,7 @@ export default function Team_Access() {
             email: record.email,
             department: record.department || undefined,
             role: record.role,
+            belong_to_tl: record.belong_to_tl || undefined,
             is_active: record.is_active,
             password: "",
         });
@@ -156,6 +174,7 @@ export default function Team_Access() {
 
         setSaving(true);
         const isEdit = !!editing;
+        const isTL = typeof values.role === "string" && ["TL", "TEAM LEAD"].includes(values.role.trim().toUpperCase());
 
         const payload: Record<string, unknown> = {
             employee_id: values.employee_id,
@@ -163,6 +182,7 @@ export default function Team_Access() {
             email: values.email,
             department: values.department || "",
             role: values.role || "",
+            belong_to_tl: isTL ? null : (values.belong_to_tl || null),
             is_active: values.is_active,
         };
         if (values.password) payload.password = values.password;
@@ -417,6 +437,29 @@ export default function Team_Access() {
                     </span>
                 ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
             ),
+        },
+        {
+            title: "Belong to TL",
+            dataIndex: "belong_to_tl_name",
+            key: "belong_to_tl_name",
+            render: (_: any, record: EmployeeCredential) => {
+                const isTL = typeof record.role === "string" && ["TL", "TEAM LEAD"].includes(record.role.trim().toUpperCase());
+                if (isTL) {
+                    return (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", fontStyle: "italic" }}>
+                            Under Admin
+                        </span>
+                    );
+                }
+                return record.belong_to_tl_name ? (
+                    <span style={{
+                        fontSize: 11, fontWeight: 600, color: "#0d9488", background: "rgba(13, 148, 136, 0.08)",
+                        border: "1px solid rgba(13, 148, 136, 0.25)", padding: "2px 9px", borderRadius: 6, whiteSpace: "nowrap",
+                    }}>
+                        {record.belong_to_tl_name}
+                    </span>
+                ) : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>;
+            },
         },
         {
             title: "Password",
@@ -729,13 +772,31 @@ export default function Team_Access() {
                     </div>
 
                     <div className="db-form-row">
+                        {!isCurrentRoleTL ? (
+                            <Form.Item label="Belong to TL" name="belong_to_tl">
+                                <Select
+                                    placeholder="Select Team Lead"
+                                    allowClear
+                                    showSearch
+                                    optionFilterProp="label"
+                                    options={availableTLs.map((tl) => ({
+                                        value: tl.id,
+                                        label: tl.department ? `${tl.name} (${tl.department})` : tl.name,
+                                    }))}
+                                    notFoundContent="No available TL found"
+                                />
+                            </Form.Item>
+                        ) : (
+                            <Form.Item label="Belong to TL">
+                                <Input disabled value="Under Admin (Direct Report)" style={{ color: "var(--text-muted)" }} />
+                            </Form.Item>
+                        )}
 
                         <Form.Item label="Is Active" name="is_active" valuePropName="checked">
                             <div style={{ display: "flex", alignItems: "center", gap: 10, height: 36 }}>
                                 <Switch defaultChecked />
                             </div>
                         </Form.Item>
-
                     </div>
                 </Form>
             </Modal>

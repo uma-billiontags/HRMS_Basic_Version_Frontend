@@ -13,6 +13,7 @@ import {
     Divider,
     Popconfirm,
     Avatar,
+    Tabs,
 } from "antd";
 import {
     ClockCircleOutlined,
@@ -29,6 +30,8 @@ import {
     HourglassOutlined,
     PictureOutlined,
     DeleteOutlined,
+    CloseCircleOutlined,
+    SearchOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useAuth } from "../../AuthContext";
@@ -85,28 +88,7 @@ interface AttendanceCommentItem {
     created_at: string;
 }
 
-export interface AttendanceCorrectionItem {
-    id: number;
-    attendance?: number | null;
-    employee?: number | null;
-    employee_name: string;
-    department?: string;
-    date: string;
-    request_type: "in_time" | "out_time";
-    system_time: string | null;
-    system_time_formatted: string | null;
-    requested_time: string;
-    requested_time_formatted: string | null;
-    reason: string;
-    custom_reason: string;
-    proof_screenshot: string | null;
-    proof_screenshot_url: string | null;
-    status: "pending" | "approved" | "rejected";
-    admin_notes: string;
-    decided_by_name: string | null;
-    decided_at: string | null;
-    created_at: string;
-}
+export 
 
 interface AttendanceDayRecord {
     id: number | null;
@@ -176,8 +158,131 @@ const DEFAULT_REASONS = [
     "Traffic / Commute Delay",
 ];
 
+
+interface AttendanceCorrectionItem {
+    id: number;
+    attendance?: number | null;
+    employee?: number | null;
+    employee_name: string;
+    department?: string;
+    date: string;
+    request_type: "in_time" | "out_time";
+    system_time: string | null;
+    system_time_formatted: string | null;
+    requested_time: string;
+    requested_time_formatted: string | null;
+    reason: string;
+    custom_reason: string;
+    proof_screenshot: string | null;
+    proof_screenshot_url: string | null;
+    status: "pending" | "approved" | "rejected";
+    admin_notes: string;
+    decided_by_name: string | null;
+    decided_at: string | null;
+    created_at: string;
+}
+
 export default function Attendance_Employee() {
     const { user } = useAuth();
+
+    // =========================================================================
+    // TEAM LEAD (TL) TIME CORRECTION REQUESTS STATE & HANDLERS
+    // =========================================================================
+    const [tlActiveTab, setTlActiveTab] = useState<string>("my_attendance");
+    const [teamCorrections, setTeamCorrections] = useState<AttendanceCorrectionItem[]>([]);
+    const [loadingTeamCorrections, setLoadingTeamCorrections] = useState<boolean>(false);
+    const [correctionStatusFilter, setCorrectionStatusFilter] = useState<string>("all");
+    const [correctionSearch, setCorrectionSearch] = useState<string>("");
+    const [previewProofOpen, setPreviewProofOpen] = useState<boolean>(false);
+    const [previewProofSrc, setPreviewProofSrc] = useState<string>("");
+
+    // TL Decision Modal State
+    const [tlDecisionModalOpen, setTlDecisionModalOpen] = useState<boolean>(false);
+    const [tlDecisionTarget, setTlDecisionTarget] = useState<AttendanceCorrectionItem | null>(null);
+    const [tlDecisionAction, setTlDecisionAction] = useState<"approve" | "reject">("approve");
+    const [tlDecisionNotes, setTlDecisionNotes] = useState<string>("");
+    const [submittingTlDecision, setSubmittingTlDecision] = useState<boolean>(false);
+
+    const fetchTeamCorrections = useCallback(async () => {
+        if (!user?.isTL) return;
+        setLoadingTeamCorrections(true);
+        try {
+            const res = await fetch(`${BASE_URL}/api/attendance/corrections/?view=team`, {
+                headers: authHeaders(),
+            });
+            if (!res.ok) throw new Error("Failed to load team correction requests");
+            const data = await res.json();
+            // Filter out TL's own requests
+            const filtered = Array.isArray(data)
+                ? data.filter((item: AttendanceCorrectionItem) => item.employee_name !== user?.name)
+                : [];
+            setTeamCorrections(filtered);
+        } catch {
+            message.error("Could not load employee correction requests");
+        } finally {
+            setLoadingTeamCorrections(false);
+        }
+    }, [user?.isTL, user?.name]);
+
+    useEffect(() => {
+        if (user?.isTL) {
+            fetchTeamCorrections();
+            const timer = setInterval(fetchTeamCorrections, 30_000);
+            return () => clearInterval(timer);
+        }
+    }, [user?.isTL, fetchTeamCorrections]);
+
+    const filteredTeamCorrections = useMemo(() => {
+        return teamCorrections.filter((c) => {
+            if (correctionStatusFilter !== "all" && c.status !== correctionStatusFilter) return false;
+            if (correctionSearch.trim()) {
+                const q = correctionSearch.toLowerCase();
+                const matchName = c.employee_name?.toLowerCase().includes(q);
+                const matchDept = c.department?.toLowerCase().includes(q);
+                const matchReason = c.reason?.toLowerCase().includes(q) || c.custom_reason?.toLowerCase().includes(q);
+                return matchName || matchDept || matchReason;
+            }
+            return true;
+        });
+    }, [teamCorrections, correctionStatusFilter, correctionSearch]);
+
+    const pendingTeamCorrectionsCount = useMemo(() => {
+        return teamCorrections.filter((c) => c.status === "pending").length;
+    }, [teamCorrections]);
+
+    const handleOpenTlDecision = (item: AttendanceCorrectionItem, action: "approve" | "reject") => {
+        setTlDecisionTarget(item);
+        setTlDecisionAction(action);
+        setTlDecisionNotes("");
+        setTlDecisionModalOpen(true);
+    };
+
+    const handleConfirmTlDecision = async () => {
+        if (!tlDecisionTarget) return;
+        if (tlDecisionAction === "reject" && !tlDecisionNotes.trim()) {
+            message.warning("Please provide a reason / notes for rejecting this correction request.");
+            return;
+        }
+        setSubmittingTlDecision(true);
+        try {
+            const res = await fetch(`${BASE_URL}/api/attendance/corrections/${tlDecisionTarget.id}/decision/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+                body: JSON.stringify({ decision: tlDecisionAction, admin_notes: tlDecisionNotes.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || "Failed to record decision");
+            message.success(`Time correction request ${tlDecisionAction === "approve" ? "approved" : "rejected"} successfully.`);
+            setTlDecisionModalOpen(false);
+            setTlDecisionTarget(null);
+            setTlDecisionNotes("");
+            fetchTeamCorrections();
+        } catch (err: any) {
+            message.error(err.message || "Failed to record decision");
+        } finally {
+            setSubmittingTlDecision(false);
+        }
+    };
 
     // Current live time (updates every second)
     const [currentTime, setCurrentTime] = useState<dayjs.Dayjs>(dayjs());
@@ -367,6 +472,10 @@ export default function Attendance_Employee() {
 
     // Open Time Correction Modal
     const handleOpenCorrection = (day: AttendanceDayRecord, type: "in_time" | "out_time") => {
+        if (dayjs(day.date).isAfter(dayjs(), "day")) {
+            message.warning("Future dates cannot be edited.");
+            return;
+        }
         setCorrectionTargetDay(day);
         setCorrectionType(type);
 
@@ -559,6 +668,40 @@ export default function Attendance_Employee() {
 
     return (
         <div style={{ padding: "20px 24px", maxWidth: 1440, margin: "0 auto" }}>
+            {user?.isTL && (
+                <Tabs
+                    activeKey={tlActiveTab}
+                    onChange={(key) => setTlActiveTab(key)}
+                    style={{ marginBottom: 18 }}
+                    items={[
+                        {
+                            key: "my_attendance",
+                            label: (
+                                <span style={{ fontSize: 15, fontWeight: 600, padding: "0 8px" }}>
+                                    <ClockCircleOutlined style={{ marginRight: 6 }} />
+                                    My Attendance
+                                </span>
+                            ),
+                        },
+                        {
+                            key: "team_corrections",
+                            label: (
+                                <span style={{ fontSize: 15, fontWeight: 600, padding: "0 8px" }}>
+                                    <HourglassOutlined style={{ marginRight: 6 }} />
+                                    Time Correction Requests
+                                    {pendingTeamCorrectionsCount > 0 && (
+                                        <Tag color="red" style={{ marginLeft: 8, borderRadius: 10, fontSize: 11, padding: "0 6px" }}>
+                                            {pendingTeamCorrectionsCount} Pending
+                                        </Tag>
+                                    )}
+                                </span>
+                            ),
+                        },
+                    ]}
+                />
+            )}
+            {(!user?.isTL || tlActiveTab === "my_attendance") && (
+                <div>
             {/* ─────────────────────────────────────────────────────────────────────────────
                 1. TOP HEADER WITH ACTION BUTTONS AT RIGHT END (SCREENSHOT 3)
             ───────────────────────────────────────────────────────────────────────────── */}
@@ -1008,6 +1151,7 @@ export default function Attendance_Employee() {
                                 monthlyDays.map((day) => {
                                     const isSunday = day.day_name === "Sunday";
                                     const isToday = day.date === dayjs().format("YYYY-MM-DD");
+                                    const isFuture = dayjs(day.date).isAfter(dayjs(), "day");
 
                                     // Find pending or approved correction for In-Time
                                     const inCorrection = day.corrections?.find(
@@ -1093,20 +1237,22 @@ export default function Attendance_Employee() {
                                                         </Tooltip>
                                                     ) : null}
 
-                                                    <Tooltip title="Edit In Time (Regularize / Time Correction)">
-                                                        <Button
-                                                            type="text"
-                                                            size="small"
-                                                            icon={<EditOutlined style={{ color: "#2563EB", fontSize: 13 }} />}
-                                                            onClick={() => handleOpenCorrection(day, "in_time")}
-                                                            style={{
-                                                                padding: "0 4px",
-                                                                height: 24,
-                                                                background: "rgba(37, 99, 235, 0.08)",
-                                                                borderRadius: 4,
-                                                            }}
-                                                        />
-                                                    </Tooltip>
+                                                    {!isFuture && (
+                                                        <Tooltip title="Edit In Time (Regularize / Time Correction)">
+                                                            <Button
+                                                                type="text"
+                                                                size="small"
+                                                                icon={<EditOutlined style={{ color: "#2563EB", fontSize: 13 }} />}
+                                                                onClick={() => handleOpenCorrection(day, "in_time")}
+                                                                style={{
+                                                                    padding: "0 4px",
+                                                                    height: 24,
+                                                                    background: "rgba(37, 99, 235, 0.08)",
+                                                                    borderRadius: 4,
+                                                                }}
+                                                            />
+                                                        </Tooltip>
+                                                    )}
                                                 </div>
                                             </td>
 
@@ -1136,20 +1282,22 @@ export default function Attendance_Employee() {
                                                         </Tooltip>
                                                     ) : null}
 
-                                                    <Tooltip title="Edit Out Time (Regularize / Time Correction)">
-                                                        <Button
-                                                            type="text"
-                                                            size="small"
-                                                            icon={<EditOutlined style={{ color: "#D97706", fontSize: 13 }} />}
-                                                            onClick={() => handleOpenCorrection(day, "out_time")}
-                                                            style={{
-                                                                padding: "0 4px",
-                                                                height: 24,
-                                                                background: "rgba(217, 119, 6, 0.08)",
-                                                                borderRadius: 4,
-                                                            }}
-                                                        />
-                                                    </Tooltip>
+                                                    {!isFuture && (
+                                                        <Tooltip title="Edit Out Time (Regularize / Time Correction)">
+                                                            <Button
+                                                                type="text"
+                                                                size="small"
+                                                                icon={<EditOutlined style={{ color: "#D97706", fontSize: 13 }} />}
+                                                                onClick={() => handleOpenCorrection(day, "out_time")}
+                                                                style={{
+                                                                    padding: "0 4px",
+                                                                    height: 24,
+                                                                    background: "rgba(217, 119, 6, 0.08)",
+                                                                    borderRadius: 4,
+                                                                }}
+                                                            />
+                                                        </Tooltip>
+                                                    )}
                                                 </div>
                                             </td>
 
@@ -1264,7 +1412,7 @@ export default function Attendance_Employee() {
                                                         setSelectedRecordForComment(day);
                                                         setCommentModalVisible(true);
                                                     }}
-                                                    disabled={!day.id}
+                                                    disabled={!day.id || isFuture}
                                                 >
                                                     Note
                                                 </Button>
@@ -1281,6 +1429,221 @@ export default function Attendance_Employee() {
             {/* ─────────────────────────────────────────────────────────────────────────────
                 5. TIME CORRECTION & REGULARIZATION MODAL (SCREENSHOTS 4 & 5)
             ───────────────────────────────────────────────────────────────────────────── */}
+                </div>
+            )}
+
+            {/* TEAM LEAD: TIME CORRECTION REQUESTS TAB VIEW */}
+            {user?.isTL && tlActiveTab === "team_corrections" && (
+                <div>
+                    {/* Controls Bar */}
+                    <Card
+                        style={{
+                            marginBottom: 20,
+                            borderRadius: 12,
+                            border: "1px solid #EAECEF",
+                            background: "#FAFAFA",
+                        }}
+                        styles={{ body: { padding: "14px 18px" } }}
+                    >
+                        <div
+                            style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                                gap: 14,
+                            }}
+                        >
+                            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                                <div>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: "#4B5563", marginRight: 8 }}>
+                                        Status Filter:
+                                    </span>
+                                    <Select
+                                        value={correctionStatusFilter}
+                                        onChange={(val) => setCorrectionStatusFilter(val)}
+                                        style={{ width: 140 }}
+                                        options={[
+                                            { value: "all", label: "All Requests" },
+                                            { value: "pending", label: `Pending (${pendingTeamCorrectionsCount})` },
+                                            { value: "approved", label: "Approved" },
+                                            { value: "rejected", label: "Rejected" },
+                                        ]}
+                                    />
+                                </div>
+
+                                <Input
+                                    placeholder="Search employee, department, reason..."
+                                    prefix={<SearchOutlined style={{ color: "#94A3B8" }} />}
+                                    value={correctionSearch}
+                                    onChange={(e) => setCorrectionSearch(e.target.value)}
+                                    allowClear
+                                    style={{ width: 280 }}
+                                />
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                <div style={{ fontSize: 13, color: "#64748B" }}>
+                                    Total Requests: <strong>{filteredTeamCorrections.length}</strong>
+                                </div>
+                                <Button icon={<ReloadOutlined />} onClick={fetchTeamCorrections} loading={loadingTeamCorrections}>
+                                    Refresh
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* Corrections Table */}
+                    <Card
+                        style={{
+                            borderRadius: 14,
+                            border: "1px solid #EAECEF",
+                            boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+                        }}
+                    >
+                        <div style={{ overflowX: "auto" }}>
+                            <table style={{ width: "100%", minWidth: "1200px", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+                                <thead>
+                                    <tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E2E8F0", color: "#475569", whiteSpace: "nowrap" }}>
+                                        <th style={{ padding: "12px 14px", fontWeight: 600 }}>Date</th>
+                                        <th style={{ padding: "12px 14px", fontWeight: 600 }}>Employee</th>
+                                        <th style={{ padding: "12px 14px", fontWeight: 600 }}>Department</th>
+                                        <th style={{ padding: "12px 14px", fontWeight: 600 }}>Request Type</th>
+                                        <th style={{ padding: "12px 14px", fontWeight: 600 }}>System Time</th>
+                                        <th style={{ padding: "12px 14px", fontWeight: 600 }}>Requested Time</th>
+                                        <th style={{ padding: "12px 14px", fontWeight: 600 }}>Reason & Details</th>
+                                        <th style={{ padding: "12px 14px", fontWeight: 600 }}>Proof (TimeChamp)</th>
+                                        <th style={{ padding: "12px 14px", fontWeight: 600 }}>Status</th>
+                                        <th style={{ padding: "12px 14px", fontWeight: 600, textAlign: "center" }}>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredTeamCorrections.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={10} style={{ textAlign: "center", padding: "40px", color: "#94A3B8" }}>
+                                                {loadingTeamCorrections
+                                                    ? "Loading correction requests..."
+                                                    : "No employee attendance time correction requests found."}
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredTeamCorrections.map((item) => (
+                                            <tr
+                                                key={item.id}
+                                                style={{
+                                                    borderBottom: "1px solid #F1F5F9",
+                                                    background: item.status === "pending" ? "#FEFCE8" : "#FFFFFF",
+                                                }}
+                                            >
+                                                <td style={{ padding: "12px 14px", fontWeight: 600 }}>
+                                                    {dayjs(item.date).format("DD-MM-YYYY")}
+                                                </td>
+                                                <td style={{ padding: "12px 14px", fontWeight: 600, color: "#1E293B" }}>
+                                                    {item.employee_name}
+                                                </td>
+                                                <td style={{ padding: "12px 14px", color: "#64748B" }}>
+                                                    {item.department || "-"}
+                                                </td>
+                                                <td style={{ padding: "12px 14px" }}>
+                                                    {item.request_type === "in_time" ? (
+                                                        <Tag color="cyan">Check-In (In Time)</Tag>
+                                                    ) : (
+                                                        <Tag color="orange">Check-Out (Out Time)</Tag>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: "12px 14px", fontFamily: "monospace", color: "#64748B" }}>
+                                                    {item.system_time_formatted || item.system_time || "Not Recorded"}
+                                                </td>
+                                                <td style={{ padding: "12px 14px", fontFamily: "monospace", fontWeight: 700, color: "#2563EB", fontSize: 14 }}>
+                                                    {item.requested_time_formatted || item.requested_time}
+                                                </td>
+                                                <td style={{ padding: "12px 14px", maxWidth: 220 }}>
+                                                    <Tag color="geekblue" style={{ marginBottom: 4 }}>
+                                                        {item.reason}
+                                                    </Tag>
+                                                    {item.custom_reason && (
+                                                        <div style={{ fontSize: 12, color: "#475569" }}>
+                                                            {item.custom_reason}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: "12px 14px" }}>
+                                                    {item.proof_screenshot_url ? (
+                                                        <div
+                                                            onClick={() => {
+                                                                setPreviewProofSrc(item.proof_screenshot_url!);
+                                                                setPreviewProofOpen(true);
+                                                            }}
+                                                            style={{
+                                                                display: "inline-flex",
+                                                                alignItems: "center",
+                                                                gap: 6,
+                                                                cursor: "pointer",
+                                                                background: "#EFF6FF",
+                                                                padding: "4px 8px",
+                                                                borderRadius: 6,
+                                                                border: "1px solid #BFDBFE",
+                                                            }}
+                                                        >
+                                                            <img
+                                                                src={item.proof_screenshot_url}
+                                                                alt="Proof"
+                                                                style={{ width: 28, height: 24, objectFit: "cover", borderRadius: 4 }}
+                                                            />
+                                                            <span style={{ fontSize: 11, color: "#1D4ED8", fontWeight: 600 }}>
+                                                                View Proof
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <span style={{ color: "#94A3B8", fontSize: 12 }}>No Screenshot</span>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: "12px 14px" }}>
+                                                    {item.status === "pending" ? (
+                                                        <Tag color="warning" icon={<HourglassOutlined />}>Pending</Tag>
+                                                    ) : item.status === "approved" ? (
+                                                        <Tag color="success" icon={<CheckCircleOutlined />}>Approved</Tag>
+                                                    ) : (
+                                                        <Tag color="error" icon={<CloseCircleOutlined />}>Rejected</Tag>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                                                    {item.status === "pending" ? (
+                                                        <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                                                            <Button
+                                                                type="primary"
+                                                                size="small"
+                                                                icon={<CheckCircleOutlined />}
+                                                                onClick={() => handleOpenTlDecision(item, "approve")}
+                                                                style={{ background: "#10B981", borderColor: "#10B981" }}
+                                                            >
+                                                                Approve
+                                                            </Button>
+                                                            <Button
+                                                                danger
+                                                                size="small"
+                                                                icon={<CloseCircleOutlined />}
+                                                                onClick={() => handleOpenTlDecision(item, "reject")}
+                                                            >
+                                                                Reject
+                                                            </Button>
+                                                        </div>
+                                                    ) : (
+                                                        <span style={{ fontSize: 11, color: "#64748B" }}>
+                                                            Decided by {item.decided_by_name || "Admin"}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
             <Modal
                 title={
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1687,6 +2050,96 @@ export default function Attendance_Employee() {
                 <img
                     src={imagePreviewSrc}
                     alt="Proof preview large"
+                    style={{ width: "100%", maxHeight: "80vh", objectFit: "contain", marginTop: 16 }}
+                />
+            </Modal>
+            {/* TL Decision Modal */}
+            <Modal
+                title={
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {tlDecisionAction === "approve" ? (
+                            <CheckCircleOutlined style={{ color: "#10B981", fontSize: 20 }} />
+                        ) : (
+                            <CloseCircleOutlined style={{ color: "#DC2626", fontSize: 20 }} />
+                        )}
+                        <span>
+                            {tlDecisionAction === "approve" ? "Approve Time Correction" : "Reject Time Correction"}
+                        </span>
+                    </div>
+                }
+                open={tlDecisionModalOpen}
+                onCancel={() => {
+                    setTlDecisionModalOpen(false);
+                    setTlDecisionTarget(null);
+                    setTlDecisionNotes("");
+                }}
+                footer={[
+                    <Button
+                        key="cancel"
+                        onClick={() => {
+                            setTlDecisionModalOpen(false);
+                            setTlDecisionTarget(null);
+                            setTlDecisionNotes("");
+                        }}
+                    >
+                        Cancel
+                    </Button>,
+                    <Button
+                        key="submit"
+                        type="primary"
+                        danger={tlDecisionAction === "reject"}
+                        loading={submittingTlDecision}
+                        onClick={handleConfirmTlDecision}
+                        style={
+                            tlDecisionAction === "approve"
+                                ? { background: "#10B981", borderColor: "#10B981" }
+                                : undefined
+                        }
+                    >
+                        Confirm {tlDecisionAction === "approve" ? "Approval" : "Rejection"}
+                    </Button>,
+                ]}
+            >
+                {tlDecisionTarget && (
+                    <div style={{ marginBottom: 16 }}>
+                        <div style={{ background: "#F8FAFC", padding: 12, borderRadius: 8, border: "1px solid #E2E8F0", marginBottom: 12, fontSize: 13 }}>
+                            <div><strong>Employee:</strong> {tlDecisionTarget.employee_name} ({tlDecisionTarget.department || "No Dept"})</div>
+                            <div style={{ marginTop: 4 }}><strong>Date:</strong> {dayjs(tlDecisionTarget.date).format("DD-MM-YYYY")}</div>
+                            <div style={{ marginTop: 4 }}>
+                                <strong>Request:</strong> {tlDecisionTarget.request_type === "in_time" ? "Check-In" : "Check-Out"} &rarr;{" "}
+                                <span style={{ color: "#2563EB", fontWeight: 700 }}>{tlDecisionTarget.requested_time_formatted || tlDecisionTarget.requested_time}</span>
+                            </div>
+                            <div style={{ marginTop: 4 }}><strong>Reason:</strong> {tlDecisionTarget.reason} {tlDecisionTarget.custom_reason ? `(${tlDecisionTarget.custom_reason})` : ""}</div>
+                        </div>
+
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#1E293B", marginBottom: 6 }}>
+                            {tlDecisionAction === "approve" ? "Approval Remarks (Optional):" : "Reason for Rejection *:"}
+                        </div>
+                        <TextArea
+                            rows={3}
+                            placeholder={
+                                tlDecisionAction === "approve"
+                                    ? "Add any optional comments (e.g. Verified with TimeChamp logs)..."
+                                    : "Enter specific reason why this time correction cannot be accepted..."
+                            }
+                            value={tlDecisionNotes}
+                            onChange={(e) => setTlDecisionNotes(e.target.value)}
+                        />
+                    </div>
+                )}
+            </Modal>
+
+            {/* TL Proof Screenshot Full Preview Modal */}
+            <Modal
+                open={previewProofOpen}
+                footer={null}
+                onCancel={() => setPreviewProofOpen(false)}
+                width={700}
+                centered
+            >
+                <img
+                    src={previewProofSrc}
+                    alt="Proof screenshot"
                     style={{ width: "100%", maxHeight: "80vh", objectFit: "contain", marginTop: 16 }}
                 />
             </Modal>

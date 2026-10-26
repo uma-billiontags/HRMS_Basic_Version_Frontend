@@ -12,6 +12,7 @@ interface RequestRow {
     request_type: string;
     sender_email: string;
     recipient_email: string;
+    cc_email?: string;
     employee_name: string;
     subject: string;
     body: string;
@@ -121,7 +122,7 @@ export default function AdminRequests() {
                                 <Text strong style={{ fontSize: 15 }}>{row.subject}</Text>
                                 <div style={{ marginTop: 5 }}>
                                     <Text type="secondary">
-                                        {row.employee_name} · {row.sender_email} · {dayjs(row.created_at).format("DD MMM YYYY, HH:mm")}
+                                        {row.employee_name} • {row.sender_email} • {dayjs(row.created_at).format("DD MMM YYYY, HH:mm")}
                                     </Text>
                                 </div>
                             </div>
@@ -129,13 +130,21 @@ export default function AdminRequests() {
                                 {row.status.toUpperCase()}
                             </Tag>
                         </div>
-                        <Text type="secondary">Template: {row.request_type} · Email sent to: {row.recipient_email}</Text>
+
+                        <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 10, fontSize: 13, color: "#475569" }}>
+                            <span><strong>Template:</strong> {row.request_type}</span>
+                            <span>• <strong>To:</strong> {row.recipient_email}</span>
+                            {row.cc_email && (
+                                <span>• <strong>Cc:</strong> {row.cc_email}</span>
+                            )}
+                        </div>
+
                         {(row.start_date || row.start_time) && (
                             <div style={{ marginTop: 6 }}>
                                 <Text type="secondary">
                                     {row.start_date}
-                                    {row.end_date && row.end_date !== row.start_date ? ` – ${row.end_date}` : ""}
-                                    {row.start_time ? ` · ${row.start_time.slice(0, 5)}–${row.end_time?.slice(0, 5)}` : ""}
+                                    {row.end_date && row.end_date !== row.start_date ? ` — ${row.end_date}` : ""}
+                                    {row.start_time ? ` • ${row.start_time.slice(0, 5)}—${row.end_time?.slice(0, 5)}` : ""}
                                 </Text>
                             </div>
                         )}
@@ -215,9 +224,17 @@ export default function AdminRequests() {
                         <div style={{ color: "#475569", fontSize: 13, marginBottom: 4 }}>
                             Employee: <strong style={{ color: "#1E293B" }}>{targetRow.employee_name}</strong> ({targetRow.sender_email})
                         </div>
-                        <div style={{ color: "#475569", fontSize: 13 }}>
+                        <div style={{ color: "#475569", fontSize: 13, marginBottom: 4 }}>
                             Subject: <strong style={{ color: "#1E293B" }}>{targetRow.subject}</strong>
                         </div>
+                        <div style={{ color: "#475569", fontSize: 13, marginBottom: targetRow.cc_email ? 4 : 0 }}>
+                            To: <strong style={{ color: "#1E293B" }}>{targetRow.recipient_email}</strong>
+                        </div>
+                        {targetRow.cc_email && (
+                            <div style={{ color: "#475569", fontSize: 13 }}>
+                                Cc: <strong style={{ color: "#1E293B" }}>{targetRow.cc_email}</strong>
+                            </div>
+                        )}
                     </div>
                 )}
                 <div style={{ marginBottom: 6 }}>
