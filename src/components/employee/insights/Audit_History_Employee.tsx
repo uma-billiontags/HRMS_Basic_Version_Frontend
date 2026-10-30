@@ -224,23 +224,6 @@ export default function Audit_History_Employee() {
 
     return (
         <div>
-            <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8,
-            }}>
-                <div>
-                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>
-                        Activity History
-                    </h1>
-                    <p style={{
-                        fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
-                        fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
-                    }}>
-                        Everything that happened on your tasks
-                    </p>
-                </div>
-            </div>
-
             <div className="db-stat-grid" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
                 <StatCard
                     label="Total Events"

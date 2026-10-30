@@ -19,7 +19,6 @@ import {
     ClockCircleOutlined,
     LoginOutlined,
     LogoutOutlined,
-    CalendarOutlined,
     CommentOutlined,
     ReloadOutlined,
     InfoCircleOutlined,
@@ -111,8 +110,6 @@ interface AttendanceDayRecord {
     other_pause_hours?: number | null;
     untracked_hours?: number | null;
     status: string;
-    time_doctor: string;
-    time_champ: string;
     remarks: string;
     comments: AttendanceCommentItem[];
     corrections?: AttendanceCorrectionItem[];
@@ -667,7 +664,7 @@ export default function Attendance_Employee() {
     }, [todayStatus]);
 
     return (
-        <div style={{ padding: "20px 24px", maxWidth: 1440, margin: "0 auto" }}>
+        <div style={{  maxWidth: 1440,  }}>
             {user?.isTL && (
                 <Tabs
                     activeKey={tlActiveTab}
@@ -721,10 +718,7 @@ export default function Attendance_Employee() {
                 }}
             >
                 <div>
-                    <Title level={3} style={{ margin: 0, color: "#1B3363", fontWeight: 700 }}>
-                        <CalendarOutlined style={{ marginRight: 10, color: "#1B3363" }} />
-                        Attendance & Punch Management
-                    </Title>
+                    
                     <Text type="secondary" style={{ fontSize: 13 }}>
                         Real-time attendance punch with server time lock. Office hours: 09:30 to 18:30 (Mon - Sat).
                     </Text>

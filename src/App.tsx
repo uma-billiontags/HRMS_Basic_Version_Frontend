@@ -40,6 +40,8 @@ import Attendance_Admin from "./components/admin/attendance/Attendance_Admin";
 import Attendance_Employee from "./components/employee/attendance/Attendance_Employee";
 import EmployeeRequests from "./components/requests/EmployeeRequests";
 import AdminRequests from "./components/requests/AdminRequests";
+import Performance_Report from "./components/common/Performance_Report";
+import Header from "./components/common/Header";
 
 
 // Shared shell: Sidebar on the left, page content on the right.
@@ -52,6 +54,7 @@ function DashboardLayout({ role }: { role: "admin" | "employee" }) {
     <div className="db-root">
       <Sidebar role={role} userName={user.name} isTL={user.isTL} />
       <div className="db-main">
+        <Header role={role} userName={user.name} isTL={user.isTL} />
         <main className="db-content">
           <Outlet />
         </main>
@@ -96,6 +99,7 @@ function App() {
               <Route path="/admin/rejected_requests" element={<Rejected_Request_Admin />} />
               <Route path="/admin/pending_time_correction_requests" element={<Pending_Time_Correction_Request />} />
               <Route path="/admin/reports" element={<Reports_Admin />} />
+              <Route path="/admin/performance" element={<Performance_Report role="admin" />} />
               <Route path="/admin/audit_history" element={<Audit_History_Admin />} />
               <Route path="/admin/team_access" element={<Team_Access />} />
               <Route path="/admin/upcoming_scheduled_tasks" element={<Upcoming_Scheduled_Tasks_Admin />} /> {/* <-- ADD THIS */}
@@ -116,6 +120,7 @@ function App() {
               <Route path="/employee/approved_requests" element={<Approved_Request_Employee />} />
               <Route path="/employee/rejected_requests" element={<Rejected_Request_Employee />} />
               <Route path="/employee/reports" element={<Reports_Employee />} />
+              <Route path="/employee/performance" element={<Performance_Report role="employee" />} />
               <Route path="/employee/audit_history" element={<Audit_History_Employee />} />
               <Route path="/employee/tl_tasks" element={<TL_Create_Task />} />
               <Route path="/employee/tl_review_tasks" element={<Review_Tasks_By_TL />} />

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Input, Modal, message, Space, Tag, Typography } from "antd";
-import { CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
+import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 interface RequestRow {
@@ -106,14 +106,6 @@ export default function AdminRequests() {
 
     return (
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                <div>
-                    <Title level={3} style={{ margin: 0, color: "var(--accent)" }}>Employee Requests</Title>
-                    <Text type="secondary">Review requests and record a decision.</Text>
-                </div>
-                <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>
-            </div>
-
             <Space direction="vertical" size={12} style={{ width: "100%" }}>
                 {rows.map((row) => (
                     <Card key={row.id} style={{ borderRadius: 12 }}>

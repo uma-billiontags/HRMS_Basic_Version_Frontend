@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Table, Button, Input, Select, message, Tooltip } from "antd";
-import { SearchOutlined, ReloadOutlined, CalendarOutlined, CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
+import { SearchOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 
@@ -238,27 +238,6 @@ export default function TL_Upcoming_Tasks() {
 
     return (
         <div>
-            <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8,
-            }}>
-                <div>
-                    <h1 style={{
-                        fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)",
-                        display: "flex", alignItems: "center", gap: 8,
-                    }}>
-                        <CalendarOutlined />
-                        My Upcoming Tasks
-                    </h1>
-                    <p style={{
-                        fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
-                        fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
-                    }}>
-                        Upcoming tasks scheduled for you
-                    </p>
-                </div>
-            </div>
-
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
                 <Input
                     placeholder="Search by task or project…"

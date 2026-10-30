@@ -317,20 +317,9 @@ export default function Reports_Admin() {
     return (
         <div>
             <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8,
+                display: "flex", justifyContent: "flex-end", alignItems: "center",
+                marginBottom: 16,
             }}>
-                <div>
-                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>
-                        Reports
-                    </h1>
-                    <p style={{
-                        fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
-                        fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
-                    }}>
-                        Org-wide task performance
-                    </p>
-                </div>
                 <Button onClick={handleExportCsv} icon={<DownloadOutlined />}
                     style={{
                         borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff",

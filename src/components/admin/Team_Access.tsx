@@ -230,6 +230,7 @@ export default function Team_Access() {
                     if (res.ok) {
                         message.success("Deleted successfully");
                         fetchUsers();
+                        fetchDepartments();
                     } else {
                         const err = await res.json().catch(() => ({}));
                         message.error(err.detail || "Failed to delete");
@@ -580,13 +581,7 @@ export default function Team_Access() {
     return (
         <div>
             {/* ── Page Header ── */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
-                <div>
-                    <h1 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: "var(--text-primary)" }}>Team Access</h1>
-                    <p style={{ fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0", fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                        Manage employee and admin login credentials
-                    </p>
-                </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: 16 }}>
                 <Button onClick={isEmployeeTab ? openAdd : openAddAdmin} icon={<PlusOutlined />}
                     style={{
                         borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff",

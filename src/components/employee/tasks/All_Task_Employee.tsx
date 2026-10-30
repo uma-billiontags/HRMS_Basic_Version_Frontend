@@ -195,7 +195,7 @@ type ScopeFilter = "all" | "mine";
 
 export default function All_Task_Employee({
     forceScope,
-    pageTitle = "Assigned Tasks",
+    pageTitle: _pageTitle = "Assigned Tasks",
 }: Active_Task_EmployeeProps) {
     const [tasks, setTasks] = useState<MyTask[]>([]);
     const [loading, setLoading] = useState(true);
@@ -781,25 +781,6 @@ export default function All_Task_Employee({
 
     return (
         <div>
-            <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8,
-            }}>
-                <div>
-                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>
-                        {pageTitle}
-                    </h1>
-                    <p style={{
-                        fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
-                        fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
-                    }}>
-                        {scopeFilter === "mine"
-                            ? "Tasks assigned to you — start, pause, resume, or submit"
-                            : "Everyone's work — you can only start, pause, resume, or submit your own"}
-                    </p>
-                </div>
-            </div>
-
             {activePause && (
                 <div style={{
                     marginBottom: 18,

@@ -1427,49 +1427,6 @@ export default function Review_Tasks_By_TL() {
 
     return (
         <div>
-            {/* Header */}
-            <div
-                style={{
-                    display: "flex",
-                    justifyContent:
-                        "space-between",
-                    alignItems: "center",
-                    marginBottom: 18,
-                    borderBottom:
-                        "1px solid var(--border)",
-                    paddingBottom: 8,
-                }}
-            >
-                <div>
-                    <h1
-                        style={{
-                            fontSize: 18,
-                            fontWeight: 700,
-                            margin: 0,
-                            color: "var(--accent)",
-                        }}
-                    >
-                        Review Queue
-                    </h1>
-
-                    <p
-                        style={{
-                            fontSize: 9,
-                            color: "var(--text-muted)",
-                            margin: "4px 0 0",
-                            fontWeight: 500,
-                            letterSpacing:
-                                "0.04em",
-                            textTransform:
-                                "uppercase",
-                        }}
-                    >
-                        Approve or send back tasks
-                        you assigned to your team
-                    </p>
-                </div>
-            </div>
-
             {/* Stat Cards */}
             <div
                 className="db-stat-grid"

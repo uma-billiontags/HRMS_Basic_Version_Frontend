@@ -9,27 +9,25 @@ import {
     Tooltip,
     Select,
     Timeline,
-    Typography,
     Tabs,
     DatePicker,
     Pagination,
     Space,
+    Spin,
 } from "antd";
 import {
     ClockCircleOutlined,
     CalendarOutlined,
-    DownloadOutlined,
     SearchOutlined,
-    ReloadOutlined,
     CommentOutlined,
     HourglassOutlined,
     CheckCircleOutlined,
     CloseCircleOutlined,
+    DownloadOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import * as XLSX from "xlsx";
 
-const { Text, Title } = Typography;
 const { TextArea } = Input;
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
@@ -102,8 +100,6 @@ interface AttendanceRecord {
     other_pause_hours?: number | null;
     untracked_hours?: number | null;
     status: string;
-    time_doctor: string;
-    time_champ: string;
     remarks: string;
     comments: AttendanceCommentItem[];
 }
@@ -517,54 +513,8 @@ export default function Attendance_Admin() {
     };
 
     return (
-        <div style={{ padding: "20px 24px", maxWidth: 1450, margin: "0 auto" }}>
-            {/* ── Page Header ────────────────────────────────────────────── */}
-            <div
-                style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 16,
-                    marginBottom: 20,
-                }}
-            >
-                <div>
-                    <Title level={3} style={{ margin: 0, color: "#1B3363", fontWeight: 700 }}>
-                        <CalendarOutlined style={{ marginRight: 10 }} />
-                        Attendance Administration
-                    </Title>
-                    <Text type="secondary" style={{ fontSize: 14 }}>
-                        Monitor employee punches in real-time, view monthly attendance sheets, regularize records, and export to Excel.
-                    </Text>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    {activeTab === "monthly" && (
-                        <Button
-                            type="primary"
-                            icon={<DownloadOutlined />}
-                            onClick={handleExportExcel}
-                            style={{ background: "#059669", borderColor: "#059669", fontWeight: 600 }}
-                        >
-                            Export to Excel (.xlsx)
-                        </Button>
-                    )}
-                    <Button
-                        icon={<ReloadOutlined />}
-                        onClick={() => {
-                            if (activeTab === "daily") fetchDailyData();
-                            else if (activeTab === "monthly") fetchMonthlyData();
-                            else fetchCorrections();
-                        }}
-                        loading={loadingDaily || loadingMonthly || loadingCorrections}
-                    >
-                        Refresh
-                    </Button>
-                </div>
-            </div>
-
-            {/* ── Tabs Navigation ────────────────────────────────────────── */}
+        <div style={{ maxWidth: 1450, }}>
+                    {/* ── Tabs Navigation ────────────────────────────────────────── */}
             <Tabs
                 activeKey={activeTab}
                 onChange={(key) => setActiveTab(key)}
@@ -714,9 +664,10 @@ export default function Attendance_Admin() {
                     )}
 
                     {/* Daily Table */}
-                    <Card style={{ borderRadius: 12, border: "1px solid #EAECEF", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" }}>
-                        <div style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+                    <Spin spinning={loadingDaily} tip="Loading daily attendance...">
+                        <Card style={{ borderRadius: 12, border: "1px solid #EAECEF", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" }}>
+                            <div style={{ overflowX: "auto" }}>
+                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
                                 <thead>
                                     <tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E2E8F0", color: "#475569", whiteSpace: "nowrap", }}>
                                         <th style={{ padding: "12px 14px", fontWeight: 600 }}>TAG ID</th>
@@ -862,11 +813,12 @@ export default function Attendance_Admin() {
                             </table>
                         </div>
                     </Card>
-                </div>
-            )}
+                </Spin>
+            </div>
+        )}
 
-            {/* ═══════════════════════════════════════════════════════════════
-                 TAB 2: MONTHLY ATTENDANCE SHEET (EXCEL MATRIX LAYOUT)
+        {/* ═══════════════════════════════════════════════════════════════
+             TAB 2: MONTHLY ATTENDANCE SHEET (EXCEL MATRIX LAYOUT)
             ═══════════════════════════════════════════════════════════════ */}
             {activeTab === "monthly" && (
                 <div>
@@ -966,7 +918,7 @@ export default function Attendance_Admin() {
                                 </div>
                             </div>
 
-                            <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                 <Input
                                     placeholder="Search Matrix..."
                                     prefix={<SearchOutlined style={{ color: "#9CA3AF" }} />}
@@ -975,6 +927,14 @@ export default function Attendance_Admin() {
                                     style={{ width: 220 }}
                                     allowClear
                                 />
+                                <Button
+                                    type="primary"
+                                    icon={<DownloadOutlined />}
+                                    onClick={handleExportExcel}
+                                    style={{ background: "#059669", borderColor: "#059669", fontWeight: 600 }}
+                                >
+                                    Export Excel (.xlsx)
+                                </Button>
                             </div>
                         </div>
                     </Card>
@@ -1043,7 +1003,8 @@ export default function Attendance_Admin() {
                     )}
 
                     {/* Monthly Matrix Table (Excel Structure) */}
-                    <Card style={{ borderRadius: 12, border: "1px solid #EAECEF", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" }}>
+                    <Spin spinning={loadingMonthly} tip="Loading monthly sheet...">
+                        <Card style={{ borderRadius: 12, border: "1px solid #EAECEF", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                             <div style={{ fontSize: 14, color: "#64748B" }}>
                                 Showing <strong>{filteredMonthlyRows.length}</strong> attendance records for{" "}
@@ -1220,8 +1181,9 @@ export default function Attendance_Admin() {
                             />
                         </div>
                     </Card>
-                </div>
-            )}
+                </Spin>
+            </div>
+        )}
 
             {/* ═══════════════════════════════════════════════════════════════
                  TAB 3: TIME CORRECTION & REGULARIZATION REQUESTS

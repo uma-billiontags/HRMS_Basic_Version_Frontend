@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Button, message, Spin } from "antd";
-import { ReloadOutlined, ArrowRightOutlined, PlayCircleOutlined, RocketOutlined, CoffeeOutlined, PauseCircleOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, PlayCircleOutlined, RocketOutlined, CoffeeOutlined, PauseCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useAuth } from "../AuthContext"; // adjust path to match your project
 import WorkTimelineChart from "../common/WorkTimelineChart";
@@ -242,53 +242,28 @@ export default function Employee_Dashboard() {
 
     return (
         <div>
-            <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8,
-            }}>
-                <div>
-                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>
-                        Welcome back{user?.name ? `, ${user.name}` : ""}
-                    </h1>
-                    <p style={{
-                        fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
-                        fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
-                    }}>
-                        Here's a look at your work
-                    </p>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    {isAttendanceWorking && attendanceElapsed && (
-                        <div
-                            role="status"
-                            aria-label={`Working for ${attendanceElapsed}`}
-                            style={{
-                                display: "flex", alignItems: "center", gap: 9,
-                                padding: "7px 12px", borderRadius: 12,
-                                border: "1px solid #a7f3d0", background: "#ecfdf5", color: "#047857",
-                            }}
-                        >
-                            <span style={{
-                                width: 10, height: 10, borderRadius: "50%", background: "#10b981",
-                                boxShadow: "0 0 0 4px #a7f3d0", flexShrink: 0,
-                            }} />
-                            <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
-                                <span style={{ fontSize: 11, fontWeight: 700 }}>WORKING</span>
-                                <span style={{ fontSize: 13, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{attendanceElapsed}</span>
-                            </span>
-                        </div>
-                    )}
-                    <Button
-                        onClick={() => { fetchAll(); fetchAttendanceStatus(); }}
-                        icon={<ReloadOutlined />}
-                        loading={loading}
-                        className="db-card-action"
-                        style={{ height: 35, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, paddingInline: 14 }}
+            {isAttendanceWorking && attendanceElapsed && (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+                    <div
+                        role="status"
+                        aria-label={`Working for ${attendanceElapsed}`}
+                        style={{
+                            display: "flex", alignItems: "center", gap: 9,
+                            padding: "7px 12px", borderRadius: 12,
+                            border: "1px solid #a7f3d0", background: "#ecfdf5", color: "#047857",
+                        }}
                     >
-                        Refresh
-                    </Button>
+                        <span style={{
+                            width: 10, height: 10, borderRadius: "50%", background: "#10b981",
+                            boxShadow: "0 0 0 4px #a7f3d0", flexShrink: 0,
+                        }} />
+                        <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700 }}>WORKING</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{attendanceElapsed}</span>
+                        </span>
+                    </div>
                 </div>
-            </div>
+            )}
             <Spin spinning={loading} tip="Loading your dashboard...">
                 {/* ── Currently working on ── */}
                 {activeSession ? (

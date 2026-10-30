@@ -350,23 +350,6 @@ export default function Overdue_Tasks() {
 
     return (
         <div>
-            <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8,
-            }}>
-                <div>
-                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>
-                        Overdue Tasks
-                    </h1>
-                    <p style={{
-                        fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
-                        fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
-                    }}>
-                        Past due date and not yet completed, cancelled, or archived
-                    </p>
-                </div>
-            </div>
-
             <div className="db-stat-grid">
                 <StatCard label="Total Overdue" value={totalOverdue} changeLabel="Past due date" changeType={totalOverdue > 0 ? "down" : "neutral"} />
                 <StatCard label="15+ Days Overdue" value={overdue15Plus} changeLabel="Needs attention" changeType={overdue15Plus > 0 ? "down" : "neutral"} />

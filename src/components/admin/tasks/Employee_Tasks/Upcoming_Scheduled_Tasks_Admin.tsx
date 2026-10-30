@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Table, Button, Input, Select, message, Popconfirm, Tag, Checkbox, Tooltip, Badge } from "antd";
-import { SearchOutlined, ReloadOutlined, StopOutlined, CalendarOutlined, CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
+import { SearchOutlined, ReloadOutlined, StopOutlined, CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 
@@ -388,28 +388,6 @@ export default function Upcoming_Scheduled_Tasks_Admin() {
 
     return (
         <div>
-            {/* Header */}
-            <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8,
-            }}>
-                <div>
-                    <h1 style={{
-                        fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)",
-                        display: "flex", alignItems: "center", gap: 8,
-                    }}>
-                        <CalendarOutlined />
-                        Upcoming Scheduled Tasks
-                    </h1>
-                    <p style={{
-                        fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
-                        fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
-                    }}>
-                        View upcoming multi-day scheduled tasks & untick specific dates to skip them
-                    </p>
-                </div>
-            </div>
-
             {/* Filter bar */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
                 <Input

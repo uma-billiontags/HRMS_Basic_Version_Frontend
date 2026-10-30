@@ -525,15 +525,6 @@ export default function My_Task_Admin() {
 
     return (
         <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
-                <div>
-                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>Assigned Tasks</h1>
-                    <p style={{ fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0", fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                        Tasks a team lead assigned directly to you
-                    </p>
-                </div>
-            </div>
-
             {activePause && (
                 <div style={{
                     marginBottom: 18,

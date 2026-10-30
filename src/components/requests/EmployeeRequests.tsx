@@ -3,7 +3,6 @@ import { Button, Card, DatePicker, Input, Modal, message, Select, Space, Tag, Ta
 import {
     MailOutlined,
     SendOutlined,
-    ReloadOutlined,
     InboxOutlined,
     CheckOutlined,
     CloseOutlined,
@@ -472,26 +471,6 @@ export default function EmployeeRequests() {
 
     return (
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-            {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                <div>
-                    <Title level={3} style={{ margin: 0, color: "var(--accent)" }}>
-                        Email Requests
-                    </Title>
-                    <Text type="secondary">Send and manage employee leave and permission requests.</Text>
-                </div>
-                <Button
-                    icon={<ReloadOutlined />}
-                    onClick={() => {
-                        loadRequests();
-                        if (user?.isTL) loadTeamRequests();
-                    }}
-                    loading={loading || loadingTeam}
-                >
-                    Refresh
-                </Button>
-            </div>
-
             {/* TL Navigation Tabs */}
             {user?.isTL && (
                 <Tabs

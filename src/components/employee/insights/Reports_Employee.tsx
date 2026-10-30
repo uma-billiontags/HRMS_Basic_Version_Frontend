@@ -3,8 +3,7 @@
 // employee's own tasks on the backend, so nothing to filter by employee here.
 
 import { useEffect, useState, useCallback } from "react";
-import { Table, Button, message } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { Table, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 
@@ -206,31 +205,6 @@ export default function Reports_Employee() {
 
     return (
         <div>
-            <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 8,
-            }}>
-                <div>
-                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--accent)" }}>
-                        Reports
-                    </h1>
-                    <p style={{
-                        fontSize: 9, color: "var(--text-muted)", margin: "4px 0 0",
-                        fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
-                    }}>
-                        Your task performance summary
-                    </p>
-                </div>
-                <Button
-                    onClick={fetchReport}
-                    icon={<ReloadOutlined />}
-                    className="db-card-action"
-                    style={{ height: 35, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, paddingInline: 14 }}
-                >
-                    Refresh
-                </Button>
-            </div>
-
             <div className="db-stat-grid">
                 <StatCard
                     label="Total Tasks"
